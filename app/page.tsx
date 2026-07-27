@@ -148,7 +148,7 @@ export default function HomePage() {
               <div>
                 <p>Custom Smoothie</p>
                 <h3>Pick from the fruit and vegetable bar.</h3>
-                <small>Build-your-own smoothies start at $2.</small>
+                <small>Build-your-own smoothies start at $5.</small>
               </div>
               <Link href="/order#custom-smoothie">Build a smoothie</Link>
             </article>

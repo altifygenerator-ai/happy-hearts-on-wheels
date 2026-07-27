@@ -46,7 +46,7 @@ export function MenuPreview() {
       <div className="menu-board-footer">
         <p>
           Build-your-own salads start at <strong>$7.50</strong>, custom stir fry at{" "}
-          <strong>$8.50</strong>, and build-your-own smoothies at <strong>$2.00</strong>.
+          <strong>$8.50</strong>, and build-your-own smoothies at <strong>$5.00</strong>.
         </p>
         <Link href="/menu">See the full menu</Link>
       </div>

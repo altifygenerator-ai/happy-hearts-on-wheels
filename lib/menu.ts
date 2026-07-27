@@ -334,7 +334,7 @@ export const menuItems: MenuItem[] = [
     id: "custom-smoothie",
     name: "Build Your Own Smoothie",
     description: "Blend a custom smoothie from the fruit and vegetable bar.",
-    priceCents: 200,
+    priceCents: 500,
     category: "Drinks",
     featured: true,
     optionGroups: smoothieGroups,
