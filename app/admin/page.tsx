@@ -1,15 +1,10 @@
-import type { Metadata } from "next";
-import { AdminDashboard } from "./AdminDashboard";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Order Dashboard",
+export const metadata = {
+  title: "Orders are managed in Square",
   robots: { index: false, follow: false },
 };
 
-export default function AdminPage() {
-  return (
-    <div className="admin-page">
-      <AdminDashboard />
-    </div>
-  );
+export default function RetiredAdminPage() {
+  redirect("/");
 }
