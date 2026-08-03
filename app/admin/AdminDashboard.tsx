@@ -191,7 +191,7 @@ export function AdminDashboard() {
                 {order.items.map((item, index) => (
                   <li key={`${order.id}-${item.itemId}-${index}`}>
                     <strong>
-                      {item.quantity} × {item.name}
+                      {item.quantity} × {item.name}{item.variationName ? ` · ${item.variationName}` : ""}
                     </strong>{" "}
                     <span>{formatMoney(item.lineTotalCents)}</span>
                     {item.selections.map((selection) => (

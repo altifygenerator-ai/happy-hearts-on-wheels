@@ -3,9 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   formatMoney,
-  menuCategories,
-  menuItems,
-  priceMenuItem,
+  priceMenuItemFromCatalog,
+  type MenuCatalog,
   type MenuItem,
   type SelectionInput,
 } from "@/lib/menu";
@@ -13,52 +12,87 @@ import {
 type CartLine = {
   key: string;
   itemId: string;
+  variationId: string;
   name: string;
+  variationName: string | null;
   quantity: number;
   unitPriceCents: number;
   selections: SelectionInput[];
   selectionLabels: string[];
 };
 
-type PaymentMethod = "pay_later" | "square";
-
 type CheckoutState = {
   customerName: string;
   phone: string;
   email: string;
-  fulfillment: "pickup" | "delivery";
-  address: string;
   requestedTime: string;
   notes: string;
-  paymentMethod: PaymentMethod;
 };
-
-const squareEnabled = process.env.NEXT_PUBLIC_SQUARE_ENABLED === "true";
 
 const initialCheckout: CheckoutState = {
   customerName: "",
   phone: "",
   email: "",
-  fulfillment: "pickup",
-  address: "",
   requestedTime: "",
   notes: "",
-  paymentMethod: "pay_later",
 };
 
-function cartKey(itemId: string, selections: SelectionInput[]) {
+function cartKey(itemId: string, variationId: string, selections: SelectionInput[]) {
   const normalized = [...selections].sort((a, b) =>
     `${a.groupId}:${a.value}`.localeCompare(`${b.groupId}:${b.value}`),
   );
-  return `${itemId}:${JSON.stringify(normalized)}`;
+  return `${itemId}:${variationId}:${JSON.stringify(normalized)}`;
 }
 
-function CustomBuilder({ item, onAdd }: { item: MenuItem; onAdd: (line: CartLine) => void }) {
-  const [selected, setSelected] = useState<Record<string, string[]>>({});
+function defaultSelections(item: MenuItem) {
+  return Object.fromEntries(
+    (item.optionGroups ?? []).map((group) => [
+      group.id,
+      group.options.filter((option) => option.defaultSelected).map((option) => option.value),
+    ]),
+  );
+}
+
+function CustomBuilder({
+  catalog,
+  item,
+  onAdd,
+}: {
+  catalog: MenuCatalog;
+  item: MenuItem;
+  onAdd: (line: CartLine) => void;
+}) {
+  const firstVariation = item.variations?.find((variation) => variation.available);
+  const [variationId, setVariationId] = useState(firstVariation?.id ?? "");
+  const [selected, setSelected] = useState<Record<string, string[]>>(() => defaultSelections(item));
   const [message, setMessage] = useState("");
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => ({
     [item.optionGroups?.[0]?.id ?? ""]: true,
   }));
+
+  useEffect(() => {
+    const stillAvailable = item.variations?.some(
+      (variation) => variation.id === variationId && variation.available,
+    );
+    if (!stillAvailable) {
+      setVariationId(item.variations?.find((variation) => variation.available)?.id ?? "");
+    }
+  }, [item, variationId]);
+
+  useEffect(() => {
+    setSelected((current) =>
+      Object.fromEntries(
+        (item.optionGroups ?? []).map((group) => {
+          const availableValues = new Set(group.options.map((option) => option.value));
+          const kept = (current[group.id] ?? []).filter((value) => availableValues.has(value));
+          const defaults = group.options
+            .filter((option) => option.defaultSelected)
+            .map((option) => option.value);
+          return [group.id, kept.length ? kept : defaults];
+        }),
+      ),
+    );
+  }, [item]);
 
   const selections = useMemo<SelectionInput[]>(
     () =>
@@ -70,11 +104,11 @@ function CustomBuilder({ item, onAdd }: { item: MenuItem; onAdd: (line: CartLine
 
   const price = useMemo(() => {
     try {
-      return priceMenuItem(item.id, selections).totalCents;
+      return priceMenuItemFromCatalog(catalog, item.id, variationId, selections).totalCents;
     } catch {
-      return item.priceCents;
+      return item.variations?.find((variation) => variation.id === variationId)?.priceCents ?? item.priceCents;
     }
-  }, [item, selections]);
+  }, [catalog, item, variationId, selections]);
 
   function toggle(groupId: string, value: string, checked: boolean, maxSelections?: number) {
     setSelected((current) => {
@@ -91,11 +125,14 @@ function CustomBuilder({ item, onAdd }: { item: MenuItem; onAdd: (line: CartLine
 
   function addBuilderToCart() {
     try {
-      const priced = priceMenuItem(item.id, selections);
+      const priced = priceMenuItemFromCatalog(catalog, item.id, variationId, selections);
+      const showVariation = (item.variations?.length ?? 0) > 1;
       onAdd({
-        key: cartKey(item.id, selections),
+        key: cartKey(item.id, priced.variation.id, selections),
         itemId: item.id,
+        variationId: priced.variation.id,
         name: item.name,
+        variationName: showVariation ? priced.variation.name : null,
         quantity: 1,
         unitPriceCents: priced.totalCents,
         selections,
@@ -108,7 +145,7 @@ function CustomBuilder({ item, onAdd }: { item: MenuItem; onAdd: (line: CartLine
   }
 
   return (
-    <article className={`custom-builder builder-tone-${item.builderTone ?? "ocean"}`} id={item.id}>
+    <article className={`custom-builder builder-tone-${item.builderTone ?? "ocean"}`} id={item.slug ?? item.id}>
       <div className="builder-top">
         <div>
           <p>MAKE IT YOURS</p>
@@ -117,6 +154,26 @@ function CustomBuilder({ item, onAdd }: { item: MenuItem; onAdd: (line: CartLine
         </div>
         <strong>{formatMoney(price)}</strong>
       </div>
+
+      {(item.variations?.length ?? 0) > 1 ? (
+        <fieldset className="builder-variation-picker">
+          <legend>Choose a size</legend>
+          <div>
+            {item.variations?.map((variation) => (
+              <label className={variationId === variation.id ? "variation-selected" : ""} key={variation.id}>
+                <input
+                  type="radio"
+                  name={`${item.id}-variation`}
+                  checked={variationId === variation.id}
+                  onChange={() => setVariationId(variation.id)}
+                />
+                <span>{variation.name}</span>
+                <strong>{formatMoney(variation.priceCents)}</strong>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
 
       <div className="builder-groups">
         {item.optionGroups?.map((group, index) => {
@@ -138,12 +195,7 @@ function CustomBuilder({ item, onAdd }: { item: MenuItem; onAdd: (line: CartLine
                     {group.label}
                     {group.required ? " *" : ""}
                   </strong>
-                  <small>
-                    {group.help ??
-                      (group.maxSelections
-                        ? `Choose up to ${group.maxSelections}`
-                        : "Choose any that sound good")}
-                  </small>
+                  <small>{group.help ?? "Choose any that sound good"}</small>
                 </span>
                 <span className="builder-selection-count">
                   {selectedCount ? `${selectedCount} picked` : "Open"}
@@ -180,9 +232,7 @@ function CustomBuilder({ item, onAdd }: { item: MenuItem; onAdd: (line: CartLine
       </div>
 
       <div className="builder-footer">
-        <p className="builder-message" aria-live="polite">
-          {message}
-        </p>
+        <p className="builder-message" aria-live="polite">{message}</p>
         <button className="builder-add-button" type="button" onClick={addBuilderToCart}>
           Add this build
         </button>
@@ -191,27 +241,78 @@ function CustomBuilder({ item, onAdd }: { item: MenuItem; onAdd: (line: CartLine
   );
 }
 
-export function OrderExperience() {
+function SimpleOrderItem({
+  item,
+  onAdd,
+}: {
+  item: MenuItem;
+  onAdd: (line: CartLine) => void;
+}) {
+  const variations = item.variations ?? [];
+  const [variationId, setVariationId] = useState(
+    variations.find((variation) => variation.available)?.id ?? "",
+  );
+  const variation = variations.find((candidate) => candidate.id === variationId) ?? variations[0];
+
+  function add() {
+    if (!variation) return;
+    const showVariation = variations.length > 1;
+    onAdd({
+      key: cartKey(item.id, variation.id, []),
+      itemId: item.id,
+      variationId: variation.id,
+      name: item.name,
+      variationName: showVariation ? variation.name : null,
+      quantity: 1,
+      unitPriceCents: variation.priceCents,
+      selections: [],
+      selectionLabels: [],
+    });
+  }
+
+  return (
+    <article className="order-item-row">
+      <div>
+        <h3>{item.name}</h3>
+        {item.description ? <p>{item.description}</p> : null}
+        {variations.length > 1 ? (
+          <label className="simple-variation-select">
+            <span>Size</span>
+            <select value={variationId} onChange={(event) => setVariationId(event.target.value)}>
+              {variations.map((candidate) => (
+                <option value={candidate.id} key={candidate.id}>
+                  {candidate.name} · {formatMoney(candidate.priceCents)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+      <strong>{variation ? formatMoney(variation.priceCents) : "Unavailable"}</strong>
+      <button className="add-item-button" type="button" onClick={add} disabled={!variation}>
+        Add
+      </button>
+    </article>
+  );
+}
+
+export function OrderExperience({ initialCatalog }: { initialCatalog: MenuCatalog }) {
+  const [catalog, setCatalog] = useState(initialCatalog);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [checkout, setCheckout] = useState<CheckoutState>(initialCheckout);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState<{
-    orderNumber: string;
-    totalCents: number;
-    paymentMethod: PaymentMethod;
-  } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [squareReturn, setSquareReturn] = useState(false);
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem("happy-hearts-cart");
+      const stored = window.localStorage.getItem("happy-hearts-cart-v2");
       if (stored) setCart(JSON.parse(stored) as CartLine[]);
       const params = new URLSearchParams(window.location.search);
       setSquareReturn(params.get("payment") === "return");
     } catch {
-      window.localStorage.removeItem("happy-hearts-cart");
+      window.localStorage.removeItem("happy-hearts-cart-v2");
     } finally {
       setLoaded(true);
     }
@@ -219,8 +320,24 @@ export function OrderExperience() {
 
   useEffect(() => {
     if (!loaded) return;
-    window.localStorage.setItem("happy-hearts-cart", JSON.stringify(cart));
+    window.localStorage.setItem("happy-hearts-cart-v2", JSON.stringify(cart));
   }, [cart, loaded]);
+
+  useEffect(() => {
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/square/catalog", { cache: "no-store" });
+        if (!response.ok) return;
+        const nextCatalog = (await response.json()) as MenuCatalog;
+        if (nextCatalog.source === "square") setCatalog(nextCatalog);
+      } catch {
+        // Keep the last good menu visible. Checkout still validates live on the server.
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const totalCents = cart.reduce(
     (sum, line) => sum + line.unitPriceCents * line.quantity,
@@ -228,25 +345,12 @@ export function OrderExperience() {
   );
 
   function addLine(line: CartLine) {
-    setSuccess(null);
     setCart((current) => {
       const existing = current.find((entry) => entry.key === line.key);
       if (!existing) return [...current, line];
       return current.map((entry) =>
         entry.key === line.key ? { ...entry, quantity: entry.quantity + 1 } : entry,
       );
-    });
-  }
-
-  function addSimpleItem(item: MenuItem) {
-    addLine({
-      key: cartKey(item.id, []),
-      itemId: item.id,
-      name: item.name,
-      quantity: 1,
-      unitPriceCents: item.priceCents,
-      selections: [],
-      selectionLabels: [],
     });
   }
 
@@ -263,7 +367,6 @@ export function OrderExperience() {
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    setSuccess(null);
     if (cart.length === 0) {
       setError("Add at least one item before submitting the order.");
       return;
@@ -278,6 +381,7 @@ export function OrderExperience() {
           ...checkout,
           items: cart.map((line) => ({
             itemId: line.itemId,
+            variationId: line.variationId,
             quantity: line.quantity,
             selections: line.selections,
           })),
@@ -289,8 +393,8 @@ export function OrderExperience() {
         order?: {
           orderNumber: string;
           totalCents: number;
-          paymentMethod: PaymentMethod;
-          checkoutUrl?: string;
+          squareOrderId: string;
+          checkoutUrl: string;
         };
       };
       if (!response.ok || !result.ok || !result.order) {
@@ -298,14 +402,8 @@ export function OrderExperience() {
       }
 
       setCart([]);
-      if (result.order.checkoutUrl) {
-        window.localStorage.removeItem("happy-hearts-cart");
-        window.location.assign(result.order.checkoutUrl);
-        return;
-      }
-
-      setSuccess(result.order);
-      setCheckout(initialCheckout);
+      window.localStorage.removeItem("happy-hearts-cart-v2");
+      window.location.assign(result.order.checkoutUrl);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -317,8 +415,12 @@ export function OrderExperience() {
     }
   }
 
+  const menuItems = catalog.items.filter((item) => item.available !== false);
   const customItems = menuItems.filter((item) => item.optionGroups?.length);
-  const simpleCategories = menuCategories.filter((category) => category !== "Custom Favorites");
+  const simpleCategories = catalog.categories.filter((category) =>
+    menuItems.some((item) => item.category === category && !item.optionGroups?.length),
+  );
+  const squareCheckoutAvailable = catalog.source === "square" && !catalog.warning;
 
   return (
     <div className="order-layout">
@@ -326,46 +428,43 @@ export function OrderExperience() {
         {squareReturn ? (
           <div className="square-return-note">
             <span aria-hidden="true">♥</span>
-            <p>
-              Square sent you back to Happy Hearts. Your order and payment are being confirmed.
-            </p>
+            <p>Your Square checkout is complete. Happy Hearts can now see and manage the order in Square.</p>
           </div>
         ) : null}
 
-        <div className="custom-builders-heading">
-          <p>BUILD IT YOUR WAY</p>
-          <h2>Open one section at a time, pick what sounds good, then add it to your order.</h2>
-        </div>
+        {catalog.warning ? (
+          <div className="square-return-note menu-sync-warning">
+            <span aria-hidden="true">♥</span>
+            <p>{catalog.warning}</p>
+          </div>
+        ) : null}
 
-        {customItems.map((item) => (
-          <CustomBuilder item={item} key={item.id} onAdd={addLine} />
-        ))}
+        {catalog.source === "square" ? (
+          <p className="live-menu-note">Live menu and availability are synced from Square.</p>
+        ) : null}
+
+        {customItems.length ? (
+          <>
+            <div className="custom-builders-heading">
+              <p>BUILD IT YOUR WAY</p>
+              <h2>Open one section at a time, pick what sounds good, then add it to your order.</h2>
+            </div>
+            {customItems.map((item) => (
+              <CustomBuilder catalog={catalog} item={item} key={item.id} onAdd={addLine} />
+            ))}
+          </>
+        ) : null}
 
         {simpleCategories.map((category) => {
           const categoryItems = menuItems.filter(
             (item) => item.category === category && !item.optionGroups?.length,
           );
-          if (!categoryItems.length) return null;
-
           return (
             <section className="order-category" key={category}>
               <h2>{category}</h2>
               <div className="simple-item-list">
                 {categoryItems.map((item) => (
-                  <article className="order-item-row" key={item.id}>
-                    <div>
-                      <h3>{item.name}</h3>
-                      {item.description ? <p>{item.description}</p> : null}
-                    </div>
-                    <strong>{formatMoney(item.priceCents)}</strong>
-                    <button
-                      className="add-item-button"
-                      type="button"
-                      onClick={() => addSimpleItem(item)}
-                    >
-                      Add
-                    </button>
-                  </article>
+                  <SimpleOrderItem item={item} key={item.id} onAdd={addLine} />
                 ))}
               </div>
             </section>
@@ -379,243 +478,63 @@ export function OrderExperience() {
           <span>{formatMoney(totalCents)}</span>
         </div>
 
-        {success ? (
-          <div className="order-success">
-            <p>ORDER RECEIVED</p>
-            <h2>{success.orderNumber}</h2>
-            <p>
-              Total: <strong>{formatMoney(success.totalCents)}</strong>
-            </p>
-            <p>
-              Happy Hearts will confirm the order at the phone number you entered. For anything
-              urgent, call <a href="tel:+15016131513">501-613-1513</a>.
-            </p>
-          </div>
-        ) : (
-          <>
-            {cart.length === 0 ? (
-              <p className="empty-cart">
-                Your order is empty. Add a regular menu item or build a custom salad, stir fry or
-                smoothie.
-              </p>
-            ) : (
-              <ul className="cart-lines">
-                {cart.map((line) => (
-                  <li className="cart-line" key={line.key}>
-                    <div className="cart-line-head">
-                      <strong>{line.name}</strong>
-                      <span>{formatMoney(line.unitPriceCents * line.quantity)}</span>
-                    </div>
-                    {line.selectionLabels.length ? (
-                      <ul>
-                        {line.selectionLabels.map((label) => (
-                          <li key={label}>{label}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    <div className="cart-line-controls">
-                      <div className="quantity-controls">
-                        <button
-                          type="button"
-                          aria-label={`Decrease ${line.name} quantity`}
-                          onClick={() => changeQuantity(line.key, -1)}
-                        >
-                          −
-                        </button>
-                        <span>{line.quantity}</span>
-                        <button
-                          type="button"
-                          aria-label={`Increase ${line.name} quantity`}
-                          onClick={() => changeQuantity(line.key, 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        className="remove-line"
-                        onClick={() => setCart((current) => current.filter((item) => item.key !== line.key))}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <form className="checkout-form" onSubmit={submitOrder}>
-              <h3>Where should we send the confirmation?</h3>
-              <div className="form-grid">
-                <label>
-                  Name *
-                  <input
-                    required
-                    autoComplete="name"
-                    value={checkout.customerName}
-                    onChange={(event) =>
-                      setCheckout((current) => ({ ...current, customerName: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  Phone *
-                  <input
-                    required
-                    type="tel"
-                    autoComplete="tel"
-                    value={checkout.phone}
-                    onChange={(event) =>
-                      setCheckout((current) => ({ ...current, phone: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  Email
-                  <input
-                    type="email"
-                    autoComplete="email"
-                    value={checkout.email}
-                    onChange={(event) =>
-                      setCheckout((current) => ({ ...current, email: event.target.value }))
-                    }
-                  />
-                </label>
-
-                <fieldset className="fulfillment-fieldset">
-                  <legend>Pickup or delivery *</legend>
-                  <div className="fulfillment-options">
-                    <label>
-                      <input
-                        type="radio"
-                        name="fulfillment"
-                        value="pickup"
-                        checked={checkout.fulfillment === "pickup"}
-                        onChange={() =>
-                          setCheckout((current) => ({ ...current, fulfillment: "pickup" }))
-                        }
-                      />
-                      Pickup
-                    </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name="fulfillment"
-                        value="delivery"
-                        checked={checkout.fulfillment === "delivery"}
-                        onChange={() =>
-                          setCheckout((current) => ({
-                            ...current,
-                            fulfillment: "delivery",
-                            paymentMethod: "pay_later",
-                          }))
-                        }
-                      />
-                      Request delivery
-                    </label>
+        <>
+          {cart.length === 0 ? (
+            <p className="empty-cart">Your order is empty. Pick an item or build something your way.</p>
+          ) : (
+            <ul className="cart-lines">
+              {cart.map((line) => (
+                <li className="cart-line" key={line.key}>
+                  <div className="cart-line-head">
+                    <strong>
+                      {line.name}{line.variationName ? ` · ${line.variationName}` : ""}
+                    </strong>
+                    <span>{formatMoney(line.unitPriceCents * line.quantity)}</span>
                   </div>
-                </fieldset>
-
-                {checkout.fulfillment === "delivery" ? (
-                  <label>
-                    Delivery address *
-                    <textarea
-                      required
-                      autoComplete="street-address"
-                      value={checkout.address}
-                      onChange={(event) =>
-                        setCheckout((current) => ({ ...current, address: event.target.value }))
-                      }
-                    />
-                  </label>
-                ) : null}
-
-                <label>
-                  Requested time
-                  <input
-                    placeholder="Example: Today around 5:30"
-                    value={checkout.requestedTime}
-                    onChange={(event) =>
-                      setCheckout((current) => ({ ...current, requestedTime: event.target.value }))
-                    }
-                  />
-                </label>
-
-                <label>
-                  Order notes or allergy information
-                  <textarea
-                    value={checkout.notes}
-                    onChange={(event) =>
-                      setCheckout((current) => ({ ...current, notes: event.target.value }))
-                    }
-                  />
-                </label>
-
-                <fieldset className="payment-fieldset">
-                  <legend>Payment</legend>
-                  <div className="payment-options">
-                    <label className={checkout.paymentMethod === "pay_later" ? "payment-selected" : ""}>
-                      <input
-                        type="radio"
-                        name="paymentMethod"
-                        value="pay_later"
-                        checked={checkout.paymentMethod === "pay_later"}
-                        onChange={() =>
-                          setCheckout((current) => ({ ...current, paymentMethod: "pay_later" }))
-                        }
-                      />
-                      <span>
-                        <strong>Pay after confirmation</strong>
-                        <small>Best for delivery requests or paying at pickup.</small>
-                      </span>
-                    </label>
-                    {squareEnabled && checkout.fulfillment === "pickup" ? (
-                      <label className={checkout.paymentMethod === "square" ? "payment-selected" : ""}>
-                        <input
-                          type="radio"
-                          name="paymentMethod"
-                          value="square"
-                          checked={checkout.paymentMethod === "square"}
-                          onChange={() =>
-                            setCheckout((current) => ({ ...current, paymentMethod: "square" }))
-                          }
-                        />
-                        <span>
-                          <strong>Pay securely with Square</strong>
-                          <small>You will finish payment on Square&apos;s secure checkout.</small>
-                        </span>
-                      </label>
-                    ) : null}
-                  </div>
-                  {checkout.fulfillment === "delivery" ? (
-                    <p className="payment-helper">
-                      Delivery payment comes after Happy Hearts confirms availability and any fee.
-                    </p>
+                  {line.selectionLabels.length ? (
+                    <ul>{line.selectionLabels.map((label) => <li key={label}>{label}</li>)}</ul>
                   ) : null}
-                </fieldset>
-              </div>
+                  <div className="cart-line-controls">
+                    <div className="quantity-controls">
+                      <button type="button" aria-label={`Decrease ${line.name} quantity`} onClick={() => changeQuantity(line.key, -1)}>−</button>
+                      <span>{line.quantity}</span>
+                      <button type="button" aria-label={`Increase ${line.name} quantity`} onClick={() => changeQuantity(line.key, 1)}>+</button>
+                    </div>
+                    <button type="button" className="remove-line" onClick={() => setCart((current) => current.filter((item) => item.key !== line.key))}>Remove</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
 
-              <button className="checkout-submit" type="submit" disabled={submitting}>
-                {submitting
-                  ? checkout.paymentMethod === "square"
-                    ? "Opening Square…"
-                    : "Sending order…"
-                  : checkout.paymentMethod === "square"
-                    ? `Continue to Square · ${formatMoney(totalCents)}`
-                    : `Submit order · ${formatMoney(totalCents)}`}
-              </button>
-              {error ? (
-                <p className="checkout-error" role="alert">
-                  {error}
-                </p>
-              ) : null}
-              <p className="checkout-note">
-                Happy Hearts confirms each order by phone. Delivery availability and any delivery
-                fee are confirmed before payment.
-              </p>
-            </form>
-          </>
-        )}
+          <form className="checkout-form" onSubmit={submitOrder}>
+            <h3>Pickup details</h3>
+            <div className="square-checkout-summary">
+              <span aria-hidden="true">♥</span>
+              <div>
+                <strong>Online orders are pickup only.</strong>
+                <small>Need delivery? Call <a href="tel:+15016131513">501-613-1513</a> so Happy Hearts can confirm availability and any fee.</small>
+              </div>
+            </div>
+            <div className="form-grid">
+              <label>Name *<input required autoComplete="name" value={checkout.customerName} onChange={(event) => setCheckout((current) => ({ ...current, customerName: event.target.value }))} /></label>
+              <label>Phone *<input required type="tel" autoComplete="tel" value={checkout.phone} onChange={(event) => setCheckout((current) => ({ ...current, phone: event.target.value }))} /></label>
+              <label>Email<input type="email" autoComplete="email" value={checkout.email} onChange={(event) => setCheckout((current) => ({ ...current, email: event.target.value }))} /></label>
+              <label>Requested pickup time<input placeholder="Example: Today around 5:30" value={checkout.requestedTime} onChange={(event) => setCheckout((current) => ({ ...current, requestedTime: event.target.value }))} /></label>
+              <label>Order notes or allergy information<textarea value={checkout.notes} onChange={(event) => setCheckout((current) => ({ ...current, notes: event.target.value }))} /></label>
+            </div>
+
+            <button className="checkout-submit" type="submit" disabled={submitting || !squareCheckoutAvailable}>
+              {!squareCheckoutAvailable
+                ? "Online ordering is reconnecting"
+                : submitting
+                  ? "Opening Square…"
+                  : `Continue to secure Square checkout · ${formatMoney(totalCents)}`}
+            </button>
+            {error ? <p className="checkout-error" role="alert">{error}</p> : null}
+            <p className="checkout-note">Square is the source of truth for this order. The live menu is checked again before checkout, then Square applies configured taxes and discounts and stores the completed order and payment.</p>
+          </form>
+        </>
       </aside>
     </div>
   );

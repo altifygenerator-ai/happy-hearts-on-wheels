@@ -1,4 +1,4 @@
-import type { StoredOrder } from "@/lib/orders";
+import type { PreparedOrder } from "@/lib/orders";
 
 const DEFAULT_SQUARE_API_VERSION = "2026-07-15";
 
@@ -22,7 +22,24 @@ type SquareCheckoutResponse = {
   errors?: Array<{ detail?: string; code?: string }>;
 };
 
-export async function createSquareCheckout(order: StoredOrder) {
+
+function pickupPrepDuration() {
+  const configured = Number(process.env.SQUARE_PICKUP_PREP_TIME_MINUTES || "20");
+  const minutes = Number.isFinite(configured) ? Math.min(240, Math.max(1, Math.round(configured))) : 20;
+  return `PT${minutes}M`;
+}
+
+function pickupNote(order: PreparedOrder) {
+  return [
+    order.requestedTime ? `Requested pickup: ${order.requestedTime}` : "Pickup: as soon as available",
+    order.notes ? `Customer note: ${order.notes}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 500);
+}
+
+export async function createSquareCheckout(order: PreparedOrder) {
   const accessToken = process.env.SQUARE_ACCESS_TOKEN;
   const locationId = process.env.SQUARE_LOCATION_ID;
   if (!accessToken || !locationId) {
@@ -31,14 +48,18 @@ export async function createSquareCheckout(order: StoredOrder) {
 
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
   const lineItems = order.items.map((line) => ({
-    name: line.name.slice(0, 120),
+    catalog_object_id: line.squareVariationId,
     quantity: String(line.quantity),
-    base_price_money: {
-      amount: line.unitPriceCents,
-      currency: "USD",
-    },
-    ...(line.selections.length
-      ? { note: line.selections.join(" · ").slice(0, 500) }
+    ...(line.squareModifierIds.length
+      ? {
+          modifiers: line.squareModifierIds.map((modifierId) => ({
+            catalog_object_id: modifierId,
+            quantity: "1",
+          })),
+        }
+      : {}),
+    ...(line.selectionLabels.length
+      ? { note: line.selectionLabels.join(" · ").slice(0, 500) }
       : {}),
   }));
 
@@ -50,16 +71,37 @@ export async function createSquareCheckout(order: StoredOrder) {
       "Square-Version": process.env.SQUARE_API_VERSION || DEFAULT_SQUARE_API_VERSION,
     },
     body: JSON.stringify({
-      idempotency_key: order.id,
-      description: `Happy Hearts order ${order.order_number}`,
-      payment_note: `${order.order_number} · ${order.customer_name} · ${order.phone}`.slice(0, 500),
+      idempotency_key: order.idempotencyKey,
+      description: `Happy Hearts website order ${order.orderNumber}`,
+      payment_note: `${order.orderNumber} · ${order.customerName} · ${order.phone}`.slice(0, 500),
       order: {
         location_id: locationId,
-        reference_id: order.order_number,
+        reference_id: order.orderNumber,
+        source: { name: "Happy Hearts Website" },
         line_items: lineItems,
+        pricing_options: {
+          auto_apply_taxes: true,
+          auto_apply_discounts: true,
+        },
+        fulfillments: [
+          {
+            type: "PICKUP",
+            state: "PROPOSED",
+            pickup_details: {
+              schedule_type: "ASAP",
+              prep_time_duration: pickupPrepDuration(),
+              recipient: {
+                display_name: order.customerName,
+                phone_number: order.phone,
+                ...(order.email ? { email_address: order.email } : {}),
+              },
+              note: pickupNote(order),
+            },
+          },
+        ],
       },
       checkout_options: {
-        redirect_url: `${siteUrl}/order?payment=return&order=${encodeURIComponent(order.order_number)}`,
+        redirect_url: `${siteUrl}/order?payment=return&order=${encodeURIComponent(order.orderNumber)}`,
       },
     }),
     cache: "no-store",
@@ -72,7 +114,7 @@ export async function createSquareCheckout(order: StoredOrder) {
       .filter(Boolean)
       .join(" ");
     console.error("Square checkout error", response.status, result);
-    throw new Error(details || "Square checkout could not be opened. Please choose pay after confirmation.");
+    throw new Error(details || "Square checkout could not be opened. Please call 501-613-1513.");
   }
 
   return {

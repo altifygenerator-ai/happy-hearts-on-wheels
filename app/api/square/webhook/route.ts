@@ -1,21 +1,11 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
-import {
-  updateOrderPaymentBySquareOrderId,
-  type PaymentStatus,
-} from "@/lib/orders";
+import { SQUARE_CATALOG_CACHE_TAG } from "@/lib/square-catalog";
 
-type SquarePaymentEvent = {
+type SquareWebhookEvent = {
   type?: string;
-  data?: {
-    object?: {
-      payment?: {
-        id?: string;
-        order_id?: string;
-        status?: string;
-      };
-    };
-  };
+  event_id?: string;
 };
 
 function webhookUrl() {
@@ -42,21 +32,7 @@ function isValidSignature(rawBody: string, signatureHeader: string | null) {
   );
 }
 
-function mapPaymentStatus(status?: string): PaymentStatus | null {
-  switch (status) {
-    case "COMPLETED":
-      return "paid";
-    case "FAILED":
-      return "failed";
-    case "CANCELED":
-      return "cancelled";
-    case "PENDING":
-    case "APPROVED":
-      return "pending";
-    default:
-      return null;
-  }
-}
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -67,23 +43,18 @@ export async function POST(request: Request) {
   }
 
   try {
-    const event = JSON.parse(rawBody) as SquarePaymentEvent;
-    if (event.type !== "payment.created" && event.type !== "payment.updated") {
-      return NextResponse.json({ ok: true });
-    }
+    const event = JSON.parse(rawBody) as SquareWebhookEvent;
 
-    const payment = event.data?.object?.payment;
-    const paymentStatus = mapPaymentStatus(payment?.status);
-    if (payment?.order_id && paymentStatus) {
-      await updateOrderPaymentBySquareOrderId(payment.order_id, {
-        payment_status: paymentStatus,
-        square_payment_id: payment.id ?? null,
-      });
+    if (event.type === "catalog.version.updated") {
+      revalidateTag(SQUARE_CATALOG_CACHE_TAG, { expire: 0 });
+      revalidatePath("/");
+      revalidatePath("/menu");
+      revalidatePath("/order");
     }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Square webhook error", error);
-    return NextResponse.json({ ok: false }, { status: 500 });
+    return NextResponse.json({ ok: false }, { status: 400 });
   }
 }

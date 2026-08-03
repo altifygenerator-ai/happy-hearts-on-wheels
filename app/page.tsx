@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { MenuPreview } from "@/components/MenuPreview";
+import { itemPriceLabel } from "@/lib/menu";
+import { getMenuCatalog } from "@/lib/square-catalog";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -32,7 +34,12 @@ const businessSchema = {
   hasMenu: `${siteUrl}/menu`,
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  const catalog = await getMenuCatalog();
+  const salad = catalog.items.find((item) => item.slug === "build-your-own-salad");
+  const stirFry = catalog.items.find((item) => item.slug === "custom-stir-fry");
+  const smoothie = catalog.items.find((item) => item.slug === "custom-smoothie");
+
   return (
     <>
       <script
@@ -130,7 +137,7 @@ export default function HomePage() {
               <div>
                 <p>Custom Salad</p>
                 <h3>Start with the greens, then make it yours.</h3>
-                <small>Build-your-own salads start at $7.50.</small>
+                <small>{salad ? `${itemPriceLabel(salad)} from the live menu.` : "See the current price online."}</small>
               </div>
               <Link href="/order#build-your-own-salad">Build a salad</Link>
             </article>
@@ -139,7 +146,7 @@ export default function HomePage() {
               <div>
                 <p>Custom Stir Fry</p>
                 <h3>Choose a base, vegetables and your flavor.</h3>
-                <small>Custom stir fry starts at $8.50. Add chicken for $2.</small>
+                <small>{stirFry ? `${itemPriceLabel(stirFry)} before selected extras.` : "See the current price online."}</small>
               </div>
               <Link href="/order#custom-stir-fry">Build a stir fry</Link>
             </article>
@@ -148,7 +155,7 @@ export default function HomePage() {
               <div>
                 <p>Custom Smoothie</p>
                 <h3>Pick from the fruit and vegetable bar.</h3>
-                <small>Build-your-own smoothies start at $5.</small>
+                <small>{smoothie ? `${itemPriceLabel(smoothie)} before selected extras.` : "See the current price online."}</small>
               </div>
               <Link href="/order#custom-smoothie">Build a smoothie</Link>
             </article>
@@ -182,12 +189,12 @@ export default function HomePage() {
           </article>
           <article>
             <strong>Easy to order</strong>
-            <p>Order online for pickup or request delivery and get a phone confirmation.</p>
+            <p>Order online for pickup through Square. Call the truck to ask about delivery.</p>
           </article>
         </div>
       </section>
 
-      <MenuPreview />
+      <MenuPreview catalog={catalog} />
 
       <section className="find-us-section" id="find-us">
         <div className="find-us-scene">

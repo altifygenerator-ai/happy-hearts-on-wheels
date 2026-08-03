@@ -1,9 +1,16 @@
 import Link from "next/link";
-import { formatMoney, menuCategories, menuItems } from "@/lib/menu";
+import { itemPriceLabel, type MenuCatalog } from "@/lib/menu";
 
-const previewCategories = menuCategories.filter((category) => category !== "Custom Favorites");
+export function MenuPreview({ catalog }: { catalog: MenuCatalog }) {
+  const previewCategories = catalog.categories.filter((category) =>
+    catalog.items.some(
+      (item) => item.category === category && !item.optionGroups?.length && item.available !== false,
+    ),
+  );
+  const customItems = catalog.items.filter(
+    (item) => item.optionGroups?.length && item.available !== false,
+  );
 
-export function MenuPreview() {
   return (
     <section className="menu-board-section" id="menu">
       <div className="menu-island-heading">
@@ -13,17 +20,22 @@ export function MenuPreview() {
           <h2>Fresh, simple and full of choices.</h2>
         </div>
         <span>
-          Start with a favorite or build something from the salad bar. Prices are kept clear so
-          ordering stays easy.
+          Start with a favorite or build something from the salad bar. Prices and availability
+          stay tied to the live Square menu.
         </span>
       </div>
 
       <div className="tropical-menu-board">
         <div className="menu-board-sun" aria-hidden="true" />
-        {previewCategories.map((category, categoryIndex) => {
-          const items = menuItems
-            .filter((item) => item.category === category)
-            .slice(0, category === "Sides" ? 7 : 6);
+        {previewCategories.slice(0, 4).map((category, categoryIndex) => {
+          const items = catalog.items
+            .filter(
+              (item) =>
+                item.category === category &&
+                !item.optionGroups?.length &&
+                item.available !== false,
+            )
+            .slice(0, category.toLowerCase() === "sides" ? 7 : 6);
           return (
             <div className={`menu-column menu-column-${categoryIndex + 1}`} key={category}>
               <h3><span aria-hidden="true">♥</span>{category}</h3>
@@ -34,7 +46,7 @@ export function MenuPreview() {
                       <strong>{item.name}</strong>
                       {item.description ? <small>{item.description}</small> : null}
                     </div>
-                    <span>{formatMoney(item.priceCents)}</span>
+                    <span>{itemPriceLabel(item)}</span>
                   </article>
                 ))}
               </div>
@@ -45,8 +57,12 @@ export function MenuPreview() {
 
       <div className="menu-board-footer">
         <p>
-          Build-your-own salads start at <strong>$7.50</strong>, custom stir fry at{" "}
-          <strong>$8.50</strong>, and build-your-own smoothies at <strong>$5.00</strong>.
+          {customItems.length
+            ? customItems
+                .slice(0, 3)
+                .map((item) => `${item.name} ${itemPriceLabel(item)}`)
+                .join(" · ")
+            : "Fresh choices made your way."}
         </p>
         <Link href="/menu">See the full menu</Link>
       </div>

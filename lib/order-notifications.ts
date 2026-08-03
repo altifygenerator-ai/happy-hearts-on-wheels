@@ -34,7 +34,7 @@ function orderItemsHtml(order: StoredOrder) {
       const selections = item.selections.length
         ? `<ul>${item.selections.map((selection) => `<li>${escapeHtml(selection)}</li>`).join("")}</ul>`
         : "";
-      return `<li><strong>${item.quantity} × ${escapeHtml(item.name)}</strong> — ${formatMoney(
+      return `<li><strong>${item.quantity} × ${escapeHtml(item.name)}${item.variationName ? ` · ${escapeHtml(item.variationName)}` : ""}</strong> — ${formatMoney(
         item.lineTotalCents,
       )}${selections}</li>`;
     })

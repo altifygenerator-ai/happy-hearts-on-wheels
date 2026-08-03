@@ -1,14 +1,12 @@
-export type MenuCategory =
-  | "Custom Favorites"
-  | "Entrées"
-  | "Salads"
-  | "Sides"
-  | "Drinks";
+export type MenuCategory = string;
 
 export type MenuOption = {
   value: string;
   label: string;
   priceCents?: number;
+  available?: boolean;
+  defaultSelected?: boolean;
+  squareModifierId?: string;
 };
 
 export type OptionGroup = {
@@ -16,21 +14,43 @@ export type OptionGroup = {
   label: string;
   help?: string;
   required?: boolean;
+  minSelections?: number;
   maxSelections?: number;
   options: MenuOption[];
+  squareModifierListId?: string;
+};
+
+export type MenuVariation = {
+  id: string;
+  name: string;
+  priceCents: number;
+  available: boolean;
+  squareVariationId?: string;
 };
 
 export type MenuItem = {
   id: string;
+  slug?: string;
   name: string;
   description?: string;
   priceCents: number;
   category: MenuCategory;
+  available?: boolean;
   featured?: boolean;
+  variations?: MenuVariation[];
   optionGroups?: OptionGroup[];
   requiredAnyGroupIds?: string[];
   builderTone?: "ocean" | "leaf" | "mango";
   menuNote?: string;
+  squareItemId?: string;
+};
+
+export type MenuCatalog = {
+  source: "square" | "fallback";
+  items: MenuItem[];
+  categories: MenuCategory[];
+  updatedAt: string;
+  warning?: string;
 };
 
 const saladGreens: MenuOption[] = [
@@ -356,6 +376,25 @@ export const menuCategories: MenuCategory[] = [
   "Drinks",
 ];
 
+export const fallbackCatalog: MenuCatalog = {
+  source: "fallback",
+  categories: menuCategories,
+  updatedAt: "fallback",
+  items: menuItems.map((item) => ({
+    ...item,
+    slug: item.slug ?? item.id,
+    available: true,
+    variations: [
+      {
+        id: `${item.id}-regular`,
+        name: "Regular",
+        priceCents: item.priceCents,
+        available: true,
+      },
+    ],
+  })),
+};
+
 export function formatMoney(cents: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -363,18 +402,59 @@ export function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+export function itemPriceLabel(item: MenuItem) {
+  const prices = (item.variations?.length ? item.variations : [{ priceCents: item.priceCents }])
+    .filter((variation) => !("available" in variation) || variation.available)
+    .map((variation) => variation.priceCents);
+  if (!prices.length) return "Unavailable";
+  const low = Math.min(...prices);
+  const high = Math.max(...prices);
+  return low === high ? formatMoney(low) : `${formatMoney(low)}–${formatMoney(high)}`;
+}
+
 export type SelectionInput = {
   groupId: string;
   value: string;
 };
 
-export function priceMenuItem(itemId: string, selections: SelectionInput[] = []) {
-  const item = menuById.get(itemId);
-  if (!item) throw new Error("Unknown menu item");
+export type PricedMenuItem = {
+  item: MenuItem;
+  variation: MenuVariation;
+  totalCents: number;
+  selectionLabels: string[];
+  squareModifierIds: string[];
+};
+
+export function priceMenuItemFromCatalog(
+  catalog: MenuCatalog,
+  itemId: string,
+  variationId?: string,
+  selections: SelectionInput[] = [],
+): PricedMenuItem {
+  const item = catalog.items.find((candidate) => candidate.id === itemId);
+  if (!item || item.available === false) throw new Error("That menu item is no longer available.");
+
+  const variations = item.variations?.length
+    ? item.variations
+    : [
+        {
+          id: `${item.id}-regular`,
+          name: "Regular",
+          priceCents: item.priceCents,
+          available: true,
+        },
+      ];
+  const variation = variationId
+    ? variations.find((candidate) => candidate.id === variationId)
+    : variations.find((candidate) => candidate.available);
+  if (!variation || !variation.available) {
+    throw new Error("That size or option is currently unavailable.");
+  }
 
   const groups = item.optionGroups ?? [];
   const selectionLabels: string[] = [];
-  let totalCents = item.priceCents;
+  const squareModifierIds: string[] = [];
+  let totalCents = variation.priceCents;
 
   const groupedSelections = new Map<string, string[]>();
   for (const selection of selections) {
@@ -387,39 +467,41 @@ export function priceMenuItem(itemId: string, selections: SelectionInput[] = [])
     const hasAtLeastOne = item.requiredAnyGroupIds.some(
       (groupId) => (groupedSelections.get(groupId) ?? []).length > 0,
     );
-    if (!hasAtLeastOne) {
-      throw new Error("Choose at least one smoothie ingredient.");
-    }
+    if (!hasAtLeastOne) throw new Error("Choose at least one ingredient.");
   }
 
   for (const group of groups) {
     const selectedValues = groupedSelections.get(group.id) ?? [];
+    const minimum = group.minSelections ?? (group.required ? 1 : 0);
 
-    if (group.required && selectedValues.length === 0) {
+    if (selectedValues.length < minimum) {
       throw new Error(`Please choose ${group.label.toLowerCase()}.`);
     }
-
     if (group.maxSelections && selectedValues.length > group.maxSelections) {
       throw new Error(`Too many choices selected for ${group.label.toLowerCase()}.`);
     }
 
     for (const value of selectedValues) {
       const option = group.options.find((candidate) => candidate.value === value);
-      if (!option) throw new Error("Invalid menu option");
+      if (!option || option.available === false) {
+        throw new Error("One of those choices is no longer available. Refresh and try again.");
+      }
       totalCents += option.priceCents ?? 0;
       selectionLabels.push(`${group.label}: ${option.label}`);
+      if (option.squareModifierId) squareModifierIds.push(option.squareModifierId);
     }
   }
 
   for (const groupId of groupedSelections.keys()) {
     if (!groups.some((group) => group.id === groupId)) {
-      throw new Error("Invalid menu option group");
+      throw new Error("Invalid menu option group.");
     }
   }
 
-  return {
-    item,
-    totalCents,
-    selectionLabels,
-  };
+  return { item, variation, totalCents, selectionLabels, squareModifierIds };
+}
+
+// Backward-compatible helper for the local fallback menu.
+export function priceMenuItem(itemId: string, selections: SelectionInput[] = []) {
+  return priceMenuItemFromCatalog(fallbackCatalog, itemId, undefined, selections);
 }

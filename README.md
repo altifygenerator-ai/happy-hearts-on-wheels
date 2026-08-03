@@ -1,130 +1,162 @@
 # Happy Hearts on Wheels
 
-A custom Next.js site for Happy Hearts on Wheels in Malvern, Arkansas. The design uses the bright ocean, sunshine, coral-red hearts and tropical menu-board feel from the business's real flyers without turning the site into a generic resort template.
+Custom Next.js website for Happy Hearts on Wheels in Malvern, Arkansas.
 
-## Included
+## How the live ordering system works
 
-- Bright island-style responsive homepage
-- Balanced two-column full menu without the large empty grid gaps
-- Direct online ordering experience
-- Accordion-style builders that keep large ingredient lists clean
-- Build-your-own salad configurator
-- Custom stir-fry configurator
-- Build-your-own smoothie configurator using the menu's fruit and vegetable choices
-- Pickup and delivery-request checkout
-- Server-side price and option validation
-- Supabase order storage
-- Password-protected order dashboard at `/admin`
-- Optional owner and customer email confirmations through Resend
-- Square-hosted checkout integration for pickup orders
-- Square payment webhook endpoint for local payment status updates
-- Order status controls
-- Local development fallback storage in `.data/orders.json`
-- LocalBusiness structured data, sitemap, robots and page metadata
-- Optimized copies of the provided truck and salad-bar photos
+Square is the only source of truth for online ordering:
 
-## Start locally
+- **Square Catalog** supplies menu items, categories, sizes, prices, modifier groups, paid extras, taxes, discounts, and sold-out availability.
+- **Square Checkout** creates the secure hosted checkout page.
+- **Square Orders** stores the completed pickup order and its fulfillment details.
+- **Square Payments** stores the payment.
+- **Square Dashboard / POS** is where the business manages orders after payment.
+- **Square webhooks** tell the website when the catalog changes so its cached menu can be refreshed.
 
-```powershell
+There is no Supabase project, local production order database, or custom order dashboard. The hardcoded menu in `lib/menu.ts` is only a non-orderable visual fallback before Square credentials are connected; Square is the production menu source.
+
+## Important ordering limitation
+
+The website currently accepts **paid pickup orders through Square**. Delivery is handled by phone because Square's public Orders API does not make ordinary API-created delivery fulfillments available in Square Point of Sale without Square partner access. Keeping delivery out of the automated checkout avoids creating orders the business cannot reliably manage in Square.
+
+## Local setup
+
+1. Install dependencies:
+
+```bash
 npm install
-Copy-Item .env.example .env.local
-npm run dev
 ```
 
-Open `http://localhost:3000`.
+2. Copy the environment file:
 
-The project intentionally does not include a copied `node_modules` folder or an old package lock. Running `npm install` creates a clean lock file on the machine where the site is being used.
-
-## Connect production ordering
-
-1. Create a Supabase project.
-2. Open the SQL editor and run `supabase/schema.sql`. It can also upgrade the earlier version of the order table.
-3. In Vercel, add:
-
-```text
-SUPABASE_URL=https://YOUR-PROJECT.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=YOUR-SERVER-ONLY-SERVICE-ROLE-KEY
-ADMIN_PASSWORD=CHOOSE-A-PRIVATE-PASSWORD
-ADMIN_SESSION_SECRET=CHOOSE-A-LONG-RANDOM-SECRET
-NEXT_PUBLIC_SITE_URL=https://YOUR-DOMAIN.com
-RESEND_API_KEY=YOUR-RESEND-KEY
-ORDER_FROM_EMAIL=Happy Hearts Orders <orders@YOUR-DOMAIN.com>
-ORDER_NOTIFICATION_EMAIL=happyhearts2026@outlook.com
+```bash
+cp .env.example .env.local
 ```
 
-Never expose the Supabase service-role key or Square access token in a browser variable.
+3. Add Sandbox Square credentials to `.env.local`:
 
-Without Supabase, orders are saved to `.data/orders.json` during local development. Production ordering returns a clear call-the-business message until Supabase is connected, so orders are never silently lost.
-
-## Connect Square
-
-The site uses Square's hosted Checkout API rather than placing card fields directly on the Happy Hearts site. That keeps the site lightweight and makes the first integration easier to maintain.
-
-1. Create or open a Square developer application.
-2. Copy the correct access token and location ID into Vercel.
-3. Start in Sandbox:
-
-```text
-NEXT_PUBLIC_SQUARE_ENABLED=true
+```env
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 SQUARE_ENVIRONMENT=sandbox
 SQUARE_ACCESS_TOKEN=YOUR_SANDBOX_ACCESS_TOKEN
 SQUARE_LOCATION_ID=YOUR_SANDBOX_LOCATION_ID
 SQUARE_API_VERSION=2026-07-15
+SQUARE_PICKUP_PREP_TIME_MINUTES=20
 ```
 
-4. In Square's Developer Console, create a webhook subscription for:
+4. Start the site:
 
-```text
-payment.created
-payment.updated
+```bash
+npm run dev
 ```
 
-5. Use this notification URL and copy its signature key into Vercel:
+## Square catalog setup
 
-```text
-https://YOUR-DOMAIN.com/api/square/webhook
-SQUARE_WEBHOOK_NOTIFICATION_URL=https://YOUR-DOMAIN.com/api/square/webhook
-SQUARE_WEBHOOK_SIGNATURE_KEY=YOUR_SIGNATURE_KEY
-```
+The website does not keep a separate hardcoded production menu. Set up the complete online ordering menu inside Square:
 
-6. Test a pickup order in Sandbox. When it is paid, the private dashboard should change the payment status to `Paid`.
-7. When ready, replace the credentials with production values and set:
+- Each menu product should be a Square item.
+- Sizes should be Square item variations.
+- Salad, stir-fry, and smoothie choices should be Square modifier lists.
+- Paid extras should have their added price on the Square modifier.
+- Any ingredient that may sell out separately, such as lettuce, should be its own Square modifier.
+- Items and modifiers intended for the website must be available online and present at the selected Square location.
 
-```text
+When a variation or modifier is marked sold out for the location, the website removes it from new menu loads. The order API also retrieves Square live again immediately before creating checkout, so a stale browser cannot submit an ingredient that has since sold out.
+
+## Vercel production variables
+
+In Vercel, open **Project → Settings → Environment Variables** and add:
+
+```env
+NEXT_PUBLIC_SITE_URL=https://www.happyheartsonwheels.net
 SQUARE_ENVIRONMENT=production
+SQUARE_ACCESS_TOKEN=YOUR_PRODUCTION_ACCESS_TOKEN
+SQUARE_LOCATION_ID=YOUR_PRODUCTION_LOCATION_ID
+SQUARE_API_VERSION=2026-07-15
+SQUARE_PICKUP_PREP_TIME_MINUTES=20
 ```
 
-Square payment is intentionally limited to pickup orders. Delivery requests remain pay-after-confirmation because the owner said delivery availability and the extra delivery charge need to be confirmed first.
+Set `SQUARE_PICKUP_PREP_TIME_MINUTES` to the truck's normal preparation time. Square uses it to schedule ASAP pickup fulfillments.
 
-## Ordering behavior
+The Square Application ID is not required by this build because it uses Square-hosted Checkout rather than embedded card fields.
 
-The checkout records the customer, phone number, fulfillment, delivery address when needed, requested time, notes, selected menu options and a server-calculated total.
+Never put `SQUARE_ACCESS_TOKEN` in frontend code, GitHub, Messenger, or a variable beginning with `NEXT_PUBLIC_`.
 
-- **Pay after confirmation:** the business receives the order and confirms it by phone.
-- **Pay securely with Square:** for pickup orders, the site creates an itemized Square order and redirects the buyer to Square's hosted checkout page.
-- **Webhook update:** Square payment events update the local order's payment status in the admin dashboard.
 
-## Editing the menu
+## Vercel Analytics and performance monitoring
 
-All items, prices and custom options live in:
+This build includes both Vercel Web Analytics and Vercel Speed Insights. After importing the project into Vercel:
+
+1. Open the project in Vercel.
+2. Enable **Analytics**.
+3. Enable **Speed Insights**.
+4. Redeploy once after enabling them.
+
+No analytics API keys or environment variables are required.
+
+## Email / Resend
+
+Resend is not required for the current ordering flow. Square stores the order, payment, customer details, and pickup fulfillment, and Square is where the business manages order notifications. The website currently uses a normal email link for general contact, so there is no Resend route or Resend environment variable to configure.
+
+If a contact form or separate backup order email is added later, verify a sending subdomain under the business domain, such as `mail.happyheartsonwheels.net`, instead of sending customer-facing Happy Hearts email from the unrelated Hometown Web Services domain.
+
+## Webhook setup
+
+Deploy the website first. Its webhook endpoint is:
 
 ```text
-lib/menu.ts
+https://www.happyheartsonwheels.net/api/square/webhook
 ```
 
-The same data powers the full menu, ordering UI, Square itemization and server-side validation, so prices cannot drift between pages.
+Then in the Square Developer Console:
 
-## Important business details currently used
+1. Open **Happy Hearts Website**.
+2. Switch to **Production**.
+3. Open **Webhooks**.
+4. Choose **Add Endpoint**.
+5. Enter the exact webhook URL above.
+6. Choose the same API version used by the site.
+7. Subscribe to only:
 
-- Happy Hearts on Wheels
-- 801 Hwy 270, Malvern, AR 72104
-- 501-613-1513
-- Friday through Tuesday, 11 AM to 7 PM
-- `happyhearts2026@outlook.com`
-- No deep fryer
-- 93% lean beef
-- Grilled chicken
-- Air-fried bacon
-- Heart-conscious and diabetic-friendly choices
+```text
+catalog.version.updated
+```
 
-Review ingredient availability and wording with the owner before launch, especially health-related language and which vegetables they actually want offered in smoothies.
+8. Save the endpoint.
+9. Copy the generated **Signature Key** into Vercel:
+
+```env
+SQUARE_WEBHOOK_NOTIFICATION_URL=https://www.happyheartsonwheels.net/api/square/webhook
+SQUARE_WEBHOOK_SIGNATURE_KEY=YOUR_WEBHOOK_SIGNATURE_KEY
+```
+
+10. Redeploy the project after adding the variables.
+
+The notification URL in Vercel must match the URL entered in Square exactly, including `https`, domain, path, and whether a trailing slash is present.
+
+## What happens when Square changes
+
+1. The owner changes an item, price, size, modifier, or sold-out setting in Square.
+2. Square sends `catalog.version.updated` to the website.
+3. The website invalidates the cached home, menu, and order data.
+4. The ordering page also checks for a fresh Square menu every 30 seconds while open.
+5. Immediately before checkout, the server retrieves Square live and validates every selected variation and modifier again.
+
+## Production test checklist
+
+- Confirm the website shows the same prices as Square.
+- Mark a test modifier sold out in Square and verify it disappears from `/order` after refresh.
+- Restore the modifier and verify it returns.
+- Place a small paid pickup order.
+- Confirm the payment and itemized order appear in Square.
+- Confirm customer name, phone, pickup note, item variations, and modifiers are present.
+- Confirm Square-applied taxes and discounts are correct.
+- Refund the test order from Square if needed.
+
+## Commands
+
+```bash
+npm run dev
+npm run build
+npm start
+```

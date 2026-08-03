@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { OrderExperience } from "./OrderExperience";
+import { getMenuCatalog } from "@/lib/square-catalog";
 
 export const metadata: Metadata = {
   title: "Order Online",
@@ -7,7 +8,8 @@ export const metadata: Metadata = {
     "Order custom salads, stir fry, build-your-own smoothies, wraps, tacos, sides and drinks directly from Happy Hearts on Wheels in Malvern, Arkansas.",
 };
 
-export default function OrderPage() {
+export default async function OrderPage() {
+  const catalog = await getMenuCatalog();
   return (
     <div className="inner-page order-inner-page">
       <header className="page-intro island-page-intro order-page-intro">
@@ -16,11 +18,11 @@ export default function OrderPage() {
           <h1>Build your meal, then send it to the truck.</h1>
         </div>
         <p>
-          Pickup is available at 801 Hwy 270. Delivery requests are confirmed by phone so Happy
-          Hearts can verify availability and any fee before accepting the order.
+          Online orders are sent through Square for pickup at 801 Hwy 270. For delivery, call
+          Happy Hearts first so they can confirm availability and any fee.
         </p>
       </header>
-      <OrderExperience />
+      <OrderExperience initialCatalog={catalog} />
     </div>
   );
 }

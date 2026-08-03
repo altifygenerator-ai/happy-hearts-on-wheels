@@ -1,21 +1,10 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { priceMenuItem, type SelectionInput } from "@/lib/menu";
-
-export type OrderStatus =
-  | "new"
-  | "accepted"
-  | "preparing"
-  | "ready"
-  | "completed"
-  | "cancelled";
-
-export type PaymentMethod = "pay_later" | "square";
-export type PaymentStatus = "not_required" | "pending" | "paid" | "failed" | "cancelled";
+import { priceMenuItemFromCatalog, type SelectionInput } from "@/lib/menu";
+import { getCheckoutCatalog } from "@/lib/square-catalog";
 
 export type OrderLineInput = {
   itemId: string;
+  variationId?: string;
   quantity: number;
   selections?: SelectionInput[];
 };
@@ -24,53 +13,33 @@ export type CreateOrderInput = {
   customerName: string;
   phone: string;
   email?: string;
-  fulfillment: "pickup" | "delivery";
-  address?: string;
   requestedTime?: string;
   notes?: string;
-  paymentMethod: PaymentMethod;
   items: OrderLineInput[];
 };
 
-export type StoredOrderLine = {
-  itemId: string;
+export type PreparedOrderLine = {
   name: string;
+  variationName: string | null;
   quantity: number;
   unitPriceCents: number;
   lineTotalCents: number;
-  selections: string[];
+  selectionLabels: string[];
+  squareVariationId: string;
+  squareModifierIds: string[];
 };
 
-export type StoredOrder = {
-  id: string;
-  order_number: string;
-  customer_name: string;
+export type PreparedOrder = {
+  idempotencyKey: string;
+  orderNumber: string;
+  customerName: string;
   phone: string;
   email: string | null;
-  fulfillment: "pickup" | "delivery";
-  address: string | null;
-  requested_time: string | null;
+  requestedTime: string | null;
   notes: string | null;
-  items: StoredOrderLine[];
-  subtotal_cents: number;
-  total_cents: number;
-  status: OrderStatus;
-  payment_method: PaymentMethod;
-  payment_status: PaymentStatus;
-  square_payment_link_id: string | null;
-  square_order_id: string | null;
-  square_payment_id: string | null;
-  created_at: string;
+  items: PreparedOrderLine[];
+  subtotalCents: number;
 };
-
-const validStatuses: OrderStatus[] = [
-  "new",
-  "accepted",
-  "preparing",
-  "ready",
-  "completed",
-  "cancelled",
-];
 
 function requireText(value: unknown, label: string, maxLength: number) {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -96,15 +65,6 @@ function makeOrderNumber() {
 export function normalizeOrderInput(raw: unknown): CreateOrderInput {
   if (!raw || typeof raw !== "object") throw new Error("Invalid order.");
   const value = raw as Record<string, unknown>;
-  const fulfillment = value.fulfillment;
-  if (fulfillment !== "pickup" && fulfillment !== "delivery") {
-    throw new Error("Choose pickup or delivery.");
-  }
-
-  const paymentMethod = value.paymentMethod === "square" ? "square" : "pay_later";
-  if (paymentMethod === "square" && fulfillment === "delivery") {
-    throw new Error("Delivery requests are paid after Happy Hearts confirms the delivery fee.");
-  }
 
   const rawItems = Array.isArray(value.items) ? value.items : [];
   if (rawItems.length === 0) throw new Error("Your order is empty.");
@@ -113,7 +73,8 @@ export function normalizeOrderInput(raw: unknown): CreateOrderInput {
   const items: OrderLineInput[] = rawItems.map((rawItem) => {
     if (!rawItem || typeof rawItem !== "object") throw new Error("Invalid order item.");
     const item = rawItem as Record<string, unknown>;
-    const itemId = requireText(item.itemId, "Menu item", 80);
+    const itemId = requireText(item.itemId, "Menu item", 192);
+    const variationId = optionalText(item.variationId, 192) ?? undefined;
     const quantity = Number(item.quantity);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
       throw new Error("Invalid item quantity.");
@@ -126,237 +87,69 @@ export function normalizeOrderInput(raw: unknown): CreateOrderInput {
           }
           const selection = rawSelection as Record<string, unknown>;
           return {
-            groupId: requireText(selection.groupId, "Choice group", 80),
-            value: requireText(selection.value, "Choice", 80),
+            groupId: requireText(selection.groupId, "Choice group", 192),
+            value: requireText(selection.value, "Choice", 192),
           };
         })
       : [];
 
-    return { itemId, quantity, selections };
+    return { itemId, variationId, quantity, selections };
   });
-
-  const address = optionalText(value.address, 300);
-  if (fulfillment === "delivery" && !address) {
-    throw new Error("Enter a delivery address.");
-  }
 
   return {
     customerName: requireText(value.customerName, "Name", 120),
     phone: requireText(value.phone, "Phone", 40),
     email: optionalText(value.email, 160) ?? undefined,
-    fulfillment,
-    address: address ?? undefined,
-    requestedTime: optionalText(value.requestedTime, 80) ?? undefined,
+    requestedTime: optionalText(value.requestedTime, 120) ?? undefined,
     notes: optionalText(value.notes, 800) ?? undefined,
-    paymentMethod,
     items,
   };
 }
 
-function buildStoredOrder(input: CreateOrderInput): StoredOrder {
-  const lines: StoredOrderLine[] = input.items.map((line) => {
-    const priced = priceMenuItem(line.itemId, line.selections ?? []);
+export async function prepareSquareOrder(input: CreateOrderInput): Promise<PreparedOrder> {
+  // Always read Square fresh before checkout so a stale browser cannot order a sold-out item.
+  const catalog = await getCheckoutCatalog();
+  if (catalog.source !== "square") {
+    throw new Error("Square ordering is not connected yet. Please call 501-613-1513.");
+  }
+
+  const items: PreparedOrderLine[] = input.items.map((line) => {
+    const priced = priceMenuItemFromCatalog(
+      catalog,
+      line.itemId,
+      line.variationId,
+      line.selections ?? [],
+    );
+
+    if (!priced.variation.squareVariationId) {
+      throw new Error(`${priced.item.name} is not connected to Square correctly.`);
+    }
+
+    const showVariation = (priced.item.variations?.length ?? 0) > 1;
     return {
-      itemId: line.itemId,
       name: priced.item.name,
+      variationName: showVariation ? priced.variation.name : null,
       quantity: line.quantity,
       unitPriceCents: priced.totalCents,
       lineTotalCents: priced.totalCents * line.quantity,
-      selections: priced.selectionLabels,
+      selectionLabels: priced.selectionLabels,
+      squareVariationId: priced.variation.squareVariationId,
+      squareModifierIds: priced.squareModifierIds,
     };
   });
 
-  const subtotal = lines.reduce((sum, line) => sum + line.lineTotalCents, 0);
-  if (subtotal <= 0) throw new Error("Invalid order total.");
+  const subtotalCents = items.reduce((sum, line) => sum + line.lineTotalCents, 0);
+  if (subtotalCents <= 0) throw new Error("Invalid order total.");
 
   return {
-    id: randomUUID(),
-    order_number: makeOrderNumber(),
-    customer_name: input.customerName,
+    idempotencyKey: randomUUID(),
+    orderNumber: makeOrderNumber(),
+    customerName: input.customerName,
     phone: input.phone,
     email: input.email ?? null,
-    fulfillment: input.fulfillment,
-    address: input.address ?? null,
-    requested_time: input.requestedTime ?? null,
+    requestedTime: input.requestedTime ?? null,
     notes: input.notes ?? null,
-    items: lines,
-    subtotal_cents: subtotal,
-    total_cents: subtotal,
-    status: "new",
-    payment_method: input.paymentMethod,
-    payment_status: input.paymentMethod === "square" ? "pending" : "not_required",
-    square_payment_link_id: null,
-    square_order_id: null,
-    square_payment_id: null,
-    created_at: new Date().toISOString(),
+    items,
+    subtotalCents,
   };
-}
-
-function supabaseConfigured() {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
-}
-
-async function supabaseRequest<T>(endpoint: string, init?: RequestInit): Promise<T> {
-  const baseUrl = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!baseUrl || !serviceKey) throw new Error("Order storage is not configured.");
-
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/rest/v1/${endpoint}`, {
-    ...init,
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const details = await response.text();
-    console.error("Supabase order error", response.status, details);
-    throw new Error("The order could not be saved. Please call us instead.");
-  }
-
-  if (response.status === 204) return undefined as T;
-  const text = await response.text();
-  return text ? (JSON.parse(text) as T) : (undefined as T);
-}
-
-const localDataDir = path.join(process.cwd(), ".data");
-const localDataFile = path.join(localDataDir, "orders.json");
-
-function withPaymentDefaults(order: StoredOrder): StoredOrder {
-  return {
-    ...order,
-    payment_method: order.payment_method ?? "pay_later",
-    payment_status: order.payment_status ?? "not_required",
-    square_payment_link_id: order.square_payment_link_id ?? null,
-    square_order_id: order.square_order_id ?? null,
-    square_payment_id: order.square_payment_id ?? null,
-  };
-}
-
-async function readLocalOrders(): Promise<StoredOrder[]> {
-  try {
-    const raw = await fs.readFile(localDataFile, "utf8");
-    return (JSON.parse(raw) as StoredOrder[]).map(withPaymentDefaults);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
-}
-
-async function writeLocalOrders(orders: StoredOrder[]) {
-  await fs.mkdir(localDataDir, { recursive: true });
-  await fs.writeFile(localDataFile, JSON.stringify(orders, null, 2), "utf8");
-}
-
-export async function createOrder(input: CreateOrderInput) {
-  const order = buildStoredOrder(input);
-
-  if (supabaseConfigured()) {
-    const [saved] = await supabaseRequest<StoredOrder[]>("orders", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(order),
-    });
-    return withPaymentDefaults(saved ?? order);
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("Online ordering is not connected yet. Please call 501-613-1513.");
-  }
-
-  const orders = await readLocalOrders();
-  orders.unshift(order);
-  await writeLocalOrders(orders);
-  return order;
-}
-
-export async function listOrders(): Promise<StoredOrder[]> {
-  if (supabaseConfigured()) {
-    const orders = await supabaseRequest<StoredOrder[]>(
-      "orders?select=*&order=created_at.desc&limit=250",
-    );
-    return orders.map(withPaymentDefaults);
-  }
-  return readLocalOrders();
-}
-
-export async function updateOrderStatus(id: string, status: OrderStatus) {
-  if (!validStatuses.includes(status)) throw new Error("Invalid order status.");
-
-  if (supabaseConfigured()) {
-    const encodedId = encodeURIComponent(id);
-    const [updated] = await supabaseRequest<StoredOrder[]>(`orders?id=eq.${encodedId}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ status }),
-    });
-    if (!updated) throw new Error("Order not found.");
-    return withPaymentDefaults(updated);
-  }
-
-  const orders = await readLocalOrders();
-  const index = orders.findIndex((order) => order.id === id);
-  if (index === -1) throw new Error("Order not found.");
-  orders[index] = { ...orders[index], status };
-  await writeLocalOrders(orders);
-  return orders[index];
-}
-
-type PaymentUpdate = Partial<
-  Pick<
-    StoredOrder,
-    | "payment_status"
-    | "square_payment_link_id"
-    | "square_order_id"
-    | "square_payment_id"
-  >
->;
-
-export async function updateOrderPayment(id: string, update: PaymentUpdate) {
-  if (supabaseConfigured()) {
-    const encodedId = encodeURIComponent(id);
-    const [updated] = await supabaseRequest<StoredOrder[]>(`orders?id=eq.${encodedId}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(update),
-    });
-    if (!updated) throw new Error("Order not found.");
-    return withPaymentDefaults(updated);
-  }
-
-  const orders = await readLocalOrders();
-  const index = orders.findIndex((order) => order.id === id);
-  if (index === -1) throw new Error("Order not found.");
-  orders[index] = { ...orders[index], ...update };
-  await writeLocalOrders(orders);
-  return orders[index];
-}
-
-export async function updateOrderPaymentBySquareOrderId(
-  squareOrderId: string,
-  update: PaymentUpdate,
-) {
-  if (supabaseConfigured()) {
-    const encodedId = encodeURIComponent(squareOrderId);
-    const [updated] = await supabaseRequest<StoredOrder[]>(
-      `orders?square_order_id=eq.${encodedId}`,
-      {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify(update),
-      },
-    );
-    return updated ? withPaymentDefaults(updated) : null;
-  }
-
-  const orders = await readLocalOrders();
-  const index = orders.findIndex((order) => order.square_order_id === squareOrderId);
-  if (index === -1) return null;
-  orders[index] = { ...orders[index], ...update };
-  await writeLocalOrders(orders);
-  return orders[index];
 }
