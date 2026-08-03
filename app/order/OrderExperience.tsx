@@ -146,7 +146,16 @@ function CustomBuilder({
 
   return (
     <article className={`custom-builder builder-tone-${item.builderTone ?? "ocean"}`} id={item.slug ?? item.id}>
-      <div className="builder-top">
+      <div className={`builder-top${item.imageUrl ? " builder-top-has-image" : ""}`}>
+        {item.imageUrl ? (
+          <img
+            className="builder-item-image"
+            src={item.imageUrl}
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : null}
         <div>
           <p>MAKE IT YOURS</p>
           <h3>{item.name}</h3>
@@ -253,6 +262,7 @@ function SimpleOrderItem({
     variations.find((variation) => variation.available)?.id ?? "",
   );
   const variation = variations.find((candidate) => candidate.id === variationId) ?? variations[0];
+  const imageUrl = variation?.imageUrl ?? item.imageUrl;
 
   function add() {
     if (!variation) return;
@@ -271,7 +281,16 @@ function SimpleOrderItem({
   }
 
   return (
-    <article className="order-item-row">
+    <article className={`order-item-row${imageUrl ? " order-item-row-has-image" : ""}`}>
+      {imageUrl ? (
+        <img
+          className="order-item-image"
+          src={imageUrl}
+          alt={item.name}
+          loading="lazy"
+          decoding="async"
+        />
+      ) : null}
       <div>
         <h3>{item.name}</h3>
         {item.description ? <p>{item.description}</p> : null}

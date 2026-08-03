@@ -26,6 +26,7 @@ export type MenuVariation = {
   priceCents: number;
   available: boolean;
   squareVariationId?: string;
+  imageUrl?: string;
 };
 
 export type MenuItem = {
@@ -43,6 +44,7 @@ export type MenuItem = {
   builderTone?: "ocean" | "leaf" | "mango";
   menuNote?: string;
   squareItemId?: string;
+  imageUrl?: string;
 };
 
 export type MenuCatalog = {

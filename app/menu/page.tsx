@@ -30,33 +30,44 @@ function MenuCategorySection({
       </h2>
       {items.map((item) => (
         <article
-          className={`full-menu-item${item.optionGroups ? " full-menu-item-custom" : ""}`}
+          className={`full-menu-item${item.optionGroups ? " full-menu-item-custom" : ""}${item.imageUrl ? " full-menu-item-has-image" : ""}`}
           key={item.id}
         >
-          <div className="full-menu-item-head">
-            <h3>{item.name}</h3>
-            <span className="full-menu-item-price">{itemPriceLabel(item)}</span>
-          </div>
-          {item.description ? <p>{item.description}</p> : null}
-          {(item.variations?.length ?? 0) > 1 ? (
-            <div className="menu-variation-tags">
-              {item.variations?.map((variation) => (
-                <span key={variation.id}>
-                  {variation.name} · ${(variation.priceCents / 100).toFixed(2)}
-                </span>
-              ))}
-            </div>
+          {item.imageUrl ? (
+            <img
+              className="full-menu-item-image"
+              src={item.imageUrl}
+              alt={item.name}
+              loading="lazy"
+              decoding="async"
+            />
           ) : null}
-          {item.optionGroups ? (
-            <div className="custom-menu-details">
-              <div className="custom-menu-tags" aria-label={`${item.name} choices`}>
-                {item.optionGroups.map((group) => (
-                  <span key={group.id}>{group.label}</span>
+          <div className="full-menu-item-content">
+            <div className="full-menu-item-head">
+              <h3>{item.name}</h3>
+              <span className="full-menu-item-price">{itemPriceLabel(item)}</span>
+            </div>
+            {item.description ? <p>{item.description}</p> : null}
+            {(item.variations?.length ?? 0) > 1 ? (
+              <div className="menu-variation-tags">
+                {item.variations?.map((variation) => (
+                  <span key={variation.id}>
+                    {variation.name} · ${(variation.priceCents / 100).toFixed(2)}
+                  </span>
                 ))}
               </div>
-              <Link href={`/order#${item.slug ?? item.id}`}>Customize this online</Link>
-            </div>
-          ) : null}
+            ) : null}
+            {item.optionGroups ? (
+              <div className="custom-menu-details">
+                <div className="custom-menu-tags" aria-label={`${item.name} choices`}>
+                  {item.optionGroups.map((group) => (
+                    <span key={group.id}>{group.label}</span>
+                  ))}
+                </div>
+                <Link href={`/order#${item.slug ?? item.id}`}>Customize this online</Link>
+              </div>
+            ) : null}
+          </div>
         </article>
       ))}
     </section>

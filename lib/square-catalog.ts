@@ -65,6 +65,7 @@ type SquareCatalogObject = {
     available_online?: boolean;
     is_archived?: boolean;
     product_type?: string;
+    image_ids?: string[];
   };
   item_variation_data?: {
     item_id?: string;
@@ -74,6 +75,7 @@ type SquareCatalogObject = {
     price_money?: Money;
     location_overrides?: LocationOverride[];
     sellable?: boolean;
+    image_ids?: string[];
   };
   modifier_list_data?: {
     name?: string;
@@ -92,6 +94,11 @@ type SquareCatalogObject = {
     modifier_list_id?: string;
     location_overrides?: LocationOverride[];
     hidden_online?: boolean;
+  };
+  image_data?: {
+    name?: string;
+    caption?: string;
+    url?: string;
   };
 };
 
@@ -186,7 +193,7 @@ async function listSquareCatalogObjects() {
   let cursor: string | undefined;
 
   do {
-    const params = new URLSearchParams({ types: "ITEM,MODIFIER_LIST,CATEGORY" });
+    const params = new URLSearchParams({ types: "ITEM,MODIFIER_LIST,CATEGORY,IMAGE" });
     if (cursor) params.set("cursor", cursor);
     const result = await squareRequest<SquareListCatalogResponse>(`/v2/catalog/list?${params}`);
     objects.push(...(result.objects ?? []));
@@ -203,6 +210,7 @@ export async function loadSquareCatalog(): Promise<MenuCatalog> {
   const objects = await listSquareCatalogObjects();
   const categories = new Map<string, { name: string; ordinal: number }>();
   const modifierLists = new Map<string, SquareCatalogObject>();
+  const imageUrls = new Map<string, string>();
 
   for (const object of objects) {
     if (!object.id || object.is_deleted) continue;
@@ -213,6 +221,9 @@ export async function loadSquareCatalog(): Promise<MenuCatalog> {
       });
     }
     if (object.type === "MODIFIER_LIST") modifierLists.set(object.id, object);
+    if (object.type === "IMAGE" && object.image_data?.url) {
+      imageUrls.set(object.id, object.image_data.url);
+    }
   }
 
   const items: MenuItem[] = [];
@@ -254,12 +265,17 @@ export async function loadSquareCatalog(): Promise<MenuCatalog> {
       const priceCents = moneyAmount(locationPrice) ?? moneyAmount(data.price_money);
       if (priceCents === null) continue;
 
+      const imageUrl = data.image_ids
+        ?.map((imageId) => imageUrls.get(imageId))
+        .find((candidate): candidate is string => Boolean(candidate));
+
       parsedVariations.push({
         id: variation.id,
         squareVariationId: variation.id,
         name: data.name?.trim() || "Regular",
         priceCents,
         available: true,
+        imageUrl,
         ordinal: data.ordinal ?? Number.MAX_SAFE_INTEGER,
       });
     }
@@ -373,6 +389,10 @@ export async function loadSquareCatalog(): Promise<MenuCatalog> {
 
     const priceCents = Math.min(...variations.map((variation) => variation.priceCents));
     const hasModifiers = optionGroups.length > 0;
+    const itemImageUrl = itemData.image_ids
+      ?.map((imageId) => imageUrls.get(imageId))
+      .find((candidate): candidate is string => Boolean(candidate));
+    const imageUrl = itemImageUrl ?? variations.find((variation) => variation.imageUrl)?.imageUrl;
 
     items.push({
       id: object.id,
@@ -390,6 +410,7 @@ export async function loadSquareCatalog(): Promise<MenuCatalog> {
       menuNote: hasModifiers
         ? optionGroups.map((group) => group.label).join(", ")
         : undefined,
+      imageUrl,
     });
   }
 

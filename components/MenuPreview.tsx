@@ -41,7 +41,16 @@ export function MenuPreview({ catalog }: { catalog: MenuCatalog }) {
               <h3><span aria-hidden="true">♥</span>{category}</h3>
               <div>
                 {items.map((item) => (
-                  <article className="menu-line" key={item.id}>
+                  <article className={`menu-line${item.imageUrl ? " menu-line-has-image" : ""}`} key={item.id}>
+                    {item.imageUrl ? (
+                      <img
+                        className="menu-line-image"
+                        src={item.imageUrl}
+                        alt={item.name}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : null}
                     <div>
                       <strong>{item.name}</strong>
                       {item.description ? <small>{item.description}</small> : null}
