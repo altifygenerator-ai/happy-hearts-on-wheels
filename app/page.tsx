@@ -13,7 +13,7 @@ const businessSchema = {
   name: "Happy Hearts on Wheels",
   url: siteUrl,
   telephone: "+1-501-613-1513",
-  image: `${siteUrl}/images/truck.webp`,
+  image: `${siteUrl}/images/truck-location-2026.webp`,
   servesCuisine: ["Salads", "Stir Fry", "American"],
   address: {
     "@type": "PostalAddress",
@@ -79,7 +79,7 @@ export default async function HomePage() {
           <div className="hero-photo-stage">
             <div className="hero-photo-wrap">
               <Image
-                src="/images/truck.webp"
+                src="/images/truck-location-2026.webp"
                 alt="Happy Hearts on Wheels food truck in Malvern, Arkansas"
                 fill
                 priority
@@ -179,6 +179,15 @@ export default async function HomePage() {
         </div>
 
         <div className="heart-story-notes">
+          <div className="heart-story-logo">
+            <Image
+              src="/images/happy-hearts-logo.webp"
+              alt="Happy Hearts on Wheels — foods that make the heart happy"
+              width={720}
+              height={543}
+              sizes="(max-width: 900px) 240px, 260px"
+            />
+          </div>
           <article>
             <strong>Fresh first</strong>
             <p>Vegetables, greens and fruit are at the center of the menu.</p>
