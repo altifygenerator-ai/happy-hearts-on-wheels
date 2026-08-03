@@ -24,6 +24,13 @@ export function SiteFooter() {
           <Link href="/menu">Full menu</Link>
           <Link href="/order">Order online</Link>
           <a href="mailto:happyhearts2026@outlook.com">Email us</a>
+          <a
+            href="https://www.hometownwebservicesar.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Website by Hometown Web Services
+          </a>
         </div>
       </div>
 
