@@ -3469,3 +3469,484 @@ body {
     width: min(72vw, 250px);
   }
 }
+
+/* ===== August 2026 ordering + client beach refinements =====
+   Deliberately additive: these rules do not alter Square catalog/payment logic. */
+body {
+  background-color: #dff8fc;
+  background-image:
+    linear-gradient(180deg, rgba(235, 252, 255, 0.80) 0%, rgba(244, 253, 255, 0.88) 44%, rgba(224, 249, 252, 0.82) 100%),
+    url("/images/beach-daytime-client.webp");
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Compact top-level custom builders. Ingredient groups remain their own accordions. */
+.custom-builder {
+  overflow: hidden;
+}
+
+.builder-toggle {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.builder-title-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.builder-kicker {
+  color: var(--sun);
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+}
+
+.builder-name {
+  color: #fff;
+  font-family: "Cooper Black", Georgia, serif;
+  font-size: clamp(1.15rem, 2.2vw, 1.75rem);
+  line-height: 1.08;
+}
+
+.builder-note {
+  display: block;
+  max-width: 580px;
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.73rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.builder-open-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 104px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.builder-body {
+  background: rgba(255, 255, 255, 0.99);
+}
+
+.custom-builder.builder-tone-mango .builder-kicker,
+.custom-builder.builder-tone-mango .builder-name,
+.custom-builder.builder-tone-mango .builder-note,
+.custom-builder.builder-tone-mango .builder-open-label {
+  color: #173b44;
+}
+
+.custom-builder.builder-tone-mango .builder-open-label {
+  border-color: rgba(23, 59, 68, 0.32);
+  background: rgba(255, 255, 255, 0.38);
+}
+
+/* The optional Square item photo stays compact in a collapsed builder. */
+.builder-top-has-image.builder-toggle {
+  grid-template-columns: 82px minmax(0, 1fr) auto auto;
+  gap: 15px;
+}
+
+.builder-top-has-image.builder-toggle .builder-item-image {
+  width: 82px;
+  height: 82px;
+}
+
+/* Live open/closed indicator, driven from the Square location's business hours. */
+.ordering-status-note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 17px;
+  border: 2px solid rgba(7, 100, 124, 0.22);
+  border-radius: 13px 28px 12px 23px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 4px 5px 0 rgba(7, 100, 124, 0.08);
+}
+
+.ordering-status-note > span {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--sun);
+  color: var(--coral);
+  font-weight: 950;
+}
+
+.ordering-status-note strong {
+  display: block;
+  color: var(--ocean-deep);
+  font-size: 0.86rem;
+}
+
+.ordering-status-note p {
+  margin: 3px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.ordering-status-closed,
+.ordering-status-prep-cutoff,
+.ordering-status-unavailable {
+  border-color: rgba(239, 67, 97, 0.35);
+  background: rgba(255, 247, 240, 0.97);
+}
+
+.ordering-status-closed > span,
+.ordering-status-prep-cutoff > span,
+.ordering-status-unavailable > span {
+  background: #ffe6a3;
+  color: #a84c18;
+}
+
+/* Square Web Payments approval mode. Hosted checkout remains the default/fallback. */
+.approval-payment-box {
+  margin-top: 4px;
+  padding: 15px;
+  border: 2px solid rgba(7, 159, 193, 0.28);
+  border-radius: 13px 27px 12px 22px;
+  background: linear-gradient(145deg, rgba(235, 252, 255, 0.98), rgba(255, 252, 227, 0.98));
+}
+
+.approval-payment-heading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.approval-payment-heading > span {
+  color: var(--coral);
+  font-size: 1.15rem;
+}
+
+.approval-payment-heading strong,
+.approval-payment-heading small {
+  display: block;
+}
+
+.approval-payment-heading strong {
+  color: var(--ocean-deep);
+}
+
+.approval-payment-heading small,
+.card-loading-note,
+.approval-explainer {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.42;
+}
+
+.square-card-container {
+  min-height: 90px;
+  padding: 10px;
+  border: 1px solid rgba(7, 100, 124, 0.18);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.card-loading-note,
+.approval-explainer {
+  margin: 8px 2px 0;
+}
+
+.approval-pending-note {
+  border-color: var(--mango);
+  background: #fff8d5;
+  color: #6b4d00;
+}
+
+/* Private staff order approval queue. Square remains the order/payment store. */
+.staff-login-page,
+.staff-orders-app {
+  width: min(980px, calc(100% - 32px));
+  margin: 42px auto 70px;
+}
+
+.staff-login-card {
+  width: min(460px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  border: 3px solid var(--ocean-deep);
+  border-radius: 18px 44px 16px 36px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 8px 9px 0 rgba(7, 100, 124, 0.13);
+}
+
+.staff-login-card > p:first-of-type,
+.staff-toolbar > div:first-child > p {
+  margin: 0 0 5px;
+  color: var(--coral);
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+}
+
+.staff-login-card h1,
+.staff-toolbar h1 {
+  margin: 0;
+  color: var(--ocean-deep);
+  font-family: "Cooper Black", Georgia, serif;
+}
+
+.staff-login-card form,
+.staff-login-card label {
+  display: grid;
+  gap: 8px;
+}
+
+.staff-login-card form {
+  margin-top: 20px;
+}
+
+.staff-login-card input {
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 2px solid rgba(7, 100, 124, 0.3);
+  border-radius: 10px;
+  font: inherit;
+}
+
+.staff-login-card button,
+.staff-toolbar-actions button,
+.staff-order-actions button {
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 10px 20px 10px 17px;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.staff-login-card button,
+.staff-accept {
+  background: var(--ocean-deep);
+  color: #fff;
+}
+
+.staff-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 22px;
+  align-items: flex-end;
+  padding: 20px 22px;
+  border: 3px solid var(--ocean-deep);
+  border-radius: 18px 45px 17px 36px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 7px 8px 0 rgba(7, 100, 124, 0.12);
+}
+
+.staff-toolbar small {
+  display: block;
+  max-width: 640px;
+  margin-top: 7px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.staff-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.staff-toolbar-actions button {
+  background: #dff8fc;
+  color: var(--ocean-deep);
+  border: 1px solid rgba(7, 100, 124, 0.2);
+}
+
+.staff-error,
+.staff-empty {
+  margin: 18px 0 0;
+  padding: 13px 16px;
+  border-radius: 10px 22px 10px 18px;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  border-left: 5px solid var(--ocean);
+}
+
+.staff-error {
+  border-left-color: var(--coral);
+  color: #8d2038;
+}
+
+.staff-order-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.staff-order-card {
+  padding: 19px;
+  border: 2px solid rgba(7, 100, 124, 0.3);
+  border-radius: 15px 34px 13px 28px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 5px 6px 0 rgba(7, 100, 124, 0.09);
+}
+
+.staff-order-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.staff-order-head h2,
+.staff-order-head p {
+  margin: 2px 0 0;
+}
+
+.staff-order-head > strong {
+  color: var(--coral-dark);
+  font-family: "Cooper Black", Georgia, serif;
+  font-size: 1.45rem;
+}
+
+.staff-order-card details {
+  margin: 14px 0;
+  border-top: 1px dashed rgba(7, 100, 124, 0.28);
+  border-bottom: 1px dashed rgba(7, 100, 124, 0.28);
+}
+
+.staff-order-card summary {
+  padding: 12px 0;
+  color: var(--ocean-deep);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.staff-order-items {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 13px;
+}
+
+.staff-order-item {
+  padding: 10px 12px;
+  border-radius: 8px 17px 8px 14px;
+  background: #f0fbfd;
+}
+
+.staff-order-item p,
+.staff-order-item small,
+.staff-pickup-note,
+.staff-card-note {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.staff-order-actions {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 9px;
+}
+
+.staff-decline {
+  background: #ffe5e9;
+  color: #9b1e39;
+}
+
+.staff-accept {
+  background: #168356;
+}
+
+.staff-order-actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+@media (max-width: 680px) {
+  body {
+    background-attachment: scroll;
+    background-position: 42% top;
+  }
+
+  .builder-top.builder-toggle,
+  .builder-top-has-image.builder-toggle {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+    padding: 16px;
+  }
+
+  .builder-top-has-image.builder-toggle {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .builder-top-has-image.builder-toggle .builder-item-image {
+    width: 68px;
+    height: 68px;
+    grid-row: 1 / span 2;
+  }
+
+  .builder-toggle > strong {
+    min-width: 0;
+    min-height: 0;
+    padding: 7px 9px;
+    border-width: 2px;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    transform: none;
+  }
+
+  .builder-open-label {
+    min-width: 0;
+    justify-self: start;
+    padding: 6px 9px;
+  }
+
+  .builder-top-has-image.builder-toggle > strong,
+  .builder-top-has-image.builder-toggle .builder-open-label {
+    grid-column: 2;
+  }
+
+  .staff-login-page,
+  .staff-orders-app {
+    width: min(100% - 20px, 980px);
+    margin-top: 22px;
+  }
+
+  .staff-toolbar {
+    display: grid;
+    align-items: start;
+  }
+
+  .staff-toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .staff-order-head {
+    gap: 10px;
+  }
+
+  .staff-order-actions {
+    grid-template-columns: 1fr;
+  }
+}

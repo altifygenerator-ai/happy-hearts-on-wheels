@@ -2,10 +2,20 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { SQUARE_CATALOG_CACHE_TAG } from "@/lib/square-catalog";
+import { cleanupCanceledWebsiteOrder } from "@/lib/square";
 
 type SquareWebhookEvent = {
   type?: string;
   event_id?: string;
+  data?: {
+    object?: {
+      payment?: {
+        status?: string;
+        order_id?: string;
+        reference_id?: string;
+      };
+    };
+  };
 };
 
 function webhookUrl() {
@@ -50,6 +60,17 @@ export async function POST(request: Request) {
       revalidatePath("/");
       revalidatePath("/menu");
       revalidatePath("/order");
+    }
+
+    if (event.type === "payment.updated") {
+      const payment = event.data?.object?.payment;
+      if (
+        payment?.order_id &&
+        payment.reference_id?.startsWith("HH-") &&
+        (payment.status === "CANCELED" || payment.status === "FAILED")
+      ) {
+        await cleanupCanceledWebsiteOrder(payment.order_id);
+      }
     }
 
     return NextResponse.json({ ok: true });

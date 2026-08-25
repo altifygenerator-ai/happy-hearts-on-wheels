@@ -78,7 +78,7 @@ SQUARE_PICKUP_PREP_TIME_MINUTES=20
 
 Set `SQUARE_PICKUP_PREP_TIME_MINUTES` to the truck's normal preparation time. Square uses it to schedule ASAP pickup fulfillments.
 
-The Square Application ID is not required by this build because it uses Square-hosted Checkout rather than embedded card fields.
+The site keeps Square-hosted Checkout as the safe default. A Production Square Application ID is only required when the optional approval-before-charge mode is enabled.
 
 Never put `SQUARE_ACCESS_TOKEN` in frontend code, GitHub, Messenger, or a variable beginning with `NEXT_PUBLIC_`.
 
@@ -116,10 +116,11 @@ Then in the Square Developer Console:
 4. Choose **Add Endpoint**.
 5. Enter the exact webhook URL above.
 6. Choose the same API version used by the site.
-7. Subscribe to only:
+7. Keep the existing catalog event and, before enabling approval mode, add the payment event:
 
 ```text
 catalog.version.updated
+payment.updated
 ```
 
 8. Save the endpoint.
@@ -141,6 +142,45 @@ The notification URL in Vercel must match the URL entered in Square exactly, inc
 3. The website invalidates the cached home, menu, and order data.
 4. The ordering page also checks for a fresh Square menu every 30 seconds while open.
 5. Immediately before checkout, the server retrieves Square live and validates every selected variation and modifier again.
+
+
+## Ordering hours and approval-before-charge rollout
+
+The website now checks the Happy Hearts Square location before checkout. Square's saved business hours are the source of truth, and online ordering closes early by `SQUARE_PICKUP_PREP_TIME_MINUTES` so a last-minute order cannot arrive at closing. The server repeats this check immediately before any Square checkout or card authorization, so an old browser tab cannot bypass closing time.
+
+The new accept-before-charge flow is feature-flagged so deploying this code does **not** replace the currently working hosted checkout by itself. Start with:
+
+```env
+SQUARE_PAYMENT_MODE=hosted
+SQUARE_APPLICATION_ID=YOUR_PRODUCTION_APPLICATION_ID
+SQUARE_APPROVAL_TIMEOUT_MINUTES=15
+STAFF_ORDER_PASSWORD=USE_A_PRIVATE_PASSWORD
+```
+
+With `hosted`, the existing payment-link workflow remains active. After testing the new flow and the physical kitchen printer, switch only this variable and redeploy:
+
+```env
+SQUARE_PAYMENT_MODE=approval
+```
+
+Approval mode works like this:
+
+1. The website checks the live Square menu and location hours.
+2. Square calculates the real total including Square taxes and discounts.
+3. Square's Web Payments card fields tokenize the customer's card; raw card data never enters this app.
+4. The server creates the Square pickup order and authorizes the card with delayed capture.
+5. The order appears at `/staff/orders` as waiting for approval.
+6. **Accept & charge** captures the approved Square payment and pays the Square order.
+7. **Decline** cancels the authorization and cancels the Square order.
+8. An unanswered authorization automatically cancels after `SQUARE_APPROVAL_TIMEOUT_MINUTES`.
+
+The staff queue does not use Supabase or a second order database. It reads pending website authorizations directly from Square. Browser alerts/chimes on the staff page are a convenience; Square remains the actual order/payment record.
+
+Before switching production to approval mode, add `payment.updated` to the same existing Square production webhook subscription. The existing `catalog.version.updated` event must remain enabled.
+
+### Printer test before production switch
+
+The client cooks from Square's physical kitchen ticket. Test one real low-cost order before enabling approval mode for customers: authorize it from the website, accept it at `/staff/orders`, verify Square captures the payment, verify the paid pickup order appears in the normal Square Order Manager/POS flow, and verify the existing printer profile prints the item and modifier details. If the printer does not behave correctly, leave `SQUARE_PAYMENT_MODE=hosted` while printer routing is corrected.
 
 ## Production test checklist
 
