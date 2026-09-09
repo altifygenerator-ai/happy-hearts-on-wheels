@@ -1,0 +1,8 @@
+This preview swaps in a brighter stock beach background so you can see how a wider daytime image works in the live design.
+
+Background source used for this preview:
+- Unsplash beach photo (bright daytime beach / clear blue water)
+
+What was changed:
+- Replaced public/images/beach-daytime-client-v2.webp with a wide beach image better suited for full-page background use.
+- No ordering logic, Square integration, menu logic, or other site functionality was changed.

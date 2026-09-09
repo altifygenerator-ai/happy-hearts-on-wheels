@@ -15,7 +15,7 @@ import {
 type OrderingStatus = {
   canOrder: boolean;
   isOpen: boolean;
-  reason: "open" | "closed" | "prep-cutoff" | "unavailable";
+  reason: "open" | "closed" | "prep-cutoff" | "manual-pause" | "staff-offline" | "unavailable";
   message: string;
   prepMinutes: number;
   timezone: string;
@@ -402,6 +402,9 @@ export function OrderExperience({ initialCatalog }: { initialCatalog: MenuCatalo
   const [approvalSuccess, setApprovalSuccess] = useState<{
     orderNumber: string;
     totalCents: number;
+    squareOrderId: string;
+    paymentId: string;
+    status: "pending" | "accepted" | "declined";
   } | null>(null);
   const squareCard = useRef<SquareCard | null>(null);
 
@@ -508,6 +511,38 @@ export function OrderExperience({ initialCatalog }: { initialCatalog: MenuCatalo
       cancelled = true;
     };
   }, [paymentConfig, squareSdkReady]);
+
+  useEffect(() => {
+    if (!approvalSuccess || approvalSuccess.status !== "pending") return;
+
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const params = new URLSearchParams({
+          orderId: approvalSuccess.squareOrderId,
+          paymentId: approvalSuccess.paymentId,
+        });
+        const response = await fetch(`/api/orders/approval-status?${params}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const result = (await response.json()) as { ok: boolean; status?: string };
+        if (cancelled || !result.ok) return;
+        if (result.status === "COMPLETED") {
+          setApprovalSuccess((current) => current ? { ...current, status: "accepted" } : current);
+        } else if (result.status === "CANCELED" || result.status === "FAILED") {
+          setApprovalSuccess((current) => current ? { ...current, status: "declined" } : current);
+        }
+      } catch {
+        // Keep the pending message visible. The staff-side safety checks remain authoritative.
+      }
+    };
+
+    void check();
+    const timer = window.setInterval(check, 3_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [approvalSuccess]);
 
   useEffect(() => {
     const openFromHash = () => {
@@ -651,6 +686,9 @@ export function OrderExperience({ initialCatalog }: { initialCatalog: MenuCatalo
         setApprovalSuccess({
           orderNumber: result.order.orderNumber,
           totalCents: result.order.totalCents,
+          squareOrderId: result.order.squareOrderId,
+          paymentId: result.order.paymentId || "",
+          status: "pending",
         });
         return;
       }
@@ -713,13 +751,26 @@ export function OrderExperience({ initialCatalog }: { initialCatalog: MenuCatalo
       <div className="order-layout">
         <div className="order-menu">
           {approvalSuccess ? (
-            <div className="square-return-note approval-pending-note">
-              <span aria-hidden="true">♥</span>
-              <p>
-                <strong>{approvalSuccess.orderNumber} has been sent to Happy Hearts for approval.</strong>{" "}
-                Your card is authorized for {formatMoney(approvalSuccess.totalCents)}, but it will not be
-                charged unless the order is accepted.
-              </p>
+            <div className={`square-return-note approval-result-note approval-result-${approvalSuccess.status}`}>
+              <span aria-hidden="true">{approvalSuccess.status === "accepted" ? "✓" : approvalSuccess.status === "declined" ? "×" : "♥"}</span>
+              <div>
+                {approvalSuccess.status === "pending" ? (
+                  <>
+                    <strong>WAIT FOR CONFIRMATION — {approvalSuccess.orderNumber} is not accepted yet.</strong>
+                    <p>Your card is authorized for {formatMoney(approvalSuccess.totalCents)}, but it has not been charged. Please keep this page open and do not head to pickup until the kitchen accepts the order.</p>
+                  </>
+                ) : approvalSuccess.status === "accepted" ? (
+                  <>
+                    <strong>Order accepted! {approvalSuccess.orderNumber} is confirmed.</strong>
+                    <p>Your payment has been completed and the order has been sent into the Happy Hearts kitchen workflow.</p>
+                  </>
+                ) : (
+                  <>
+                    <strong>{approvalSuccess.orderNumber} was not accepted.</strong>
+                    <p>The card authorization was released instead of being charged. Please call 501-613-1513 if you would like to check availability.</p>
+                  </>
+                )}
+              </div>
             </div>
           ) : null}
 

@@ -390,6 +390,19 @@ export async function declinePendingApproval(squareOrderId: string, paymentId: s
   await cancelSquareOrder(squareOrderId);
 }
 
+
+export async function getApprovalPaymentStatus(squareOrderId: string, paymentId: string) {
+  const result = await squareApi<SquareCreatePaymentResponse>(`/v2/payments/${encodeURIComponent(paymentId)}`);
+  const payment = result.payment;
+  if (!payment?.id || payment.order_id !== squareOrderId) {
+    throw new Error("Approval status could not be verified.");
+  }
+  return {
+    status: payment.status || "UNKNOWN",
+    updatedAt: payment.updated_at ?? null,
+  };
+}
+
 export async function cleanupCanceledWebsiteOrder(orderId: string) {
   await cancelSquareOrder(orderId);
 }

@@ -5,7 +5,7 @@ import { squareApprovalConfigured } from "@/lib/square";
 import { StaffOrders } from "./StaffOrders";
 
 export const metadata: Metadata = {
-  title: "Staff Order Approval",
+  title: "Staff Order Control",
   robots: { index: false, follow: false },
 };
 
@@ -24,7 +24,7 @@ export default async function StaffOrdersPage({
         <section className="staff-login-card">
           <img src="/images/happy-hearts-header-mark.webp" alt="" width="86" height="86" />
           <p>HAPPY HEARTS STAFF</p>
-          <h1>Order approval</h1>
+          <h1>Order control & approval</h1>
           {!staffAuthConfigured() ? (
             <div className="staff-error">Set STAFF_ORDER_PASSWORD in Vercel before using this page.</div>
           ) : null}
@@ -34,7 +34,7 @@ export default async function StaffOrdersPage({
               Staff password
               <input type="password" name="password" required autoComplete="current-password" />
             </label>
-            <button type="submit">Open orders</button>
+            <button type="submit">Open order controls</button>
           </form>
         </section>
       </div>
