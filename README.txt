@@ -1,8 +1,14 @@
-Happy Hearts on Wheels — Hometown Web Services footer tag
+Heartbeat reliability patch for Happy Hearts staff ordering controls.
 
-Upload the contents of this patch to the root of the existing GitHub repository and replace:
+Changes only:
+- app/api/staff/ordering-control/route.ts
+- app/staff/orders/StaffOrders.tsx
 
-components/SiteFooter.tsx
+What it fixes:
+- Authenticated staff control polling now also writes the kitchen heartbeat.
+- Resuming online orders immediately writes a fresh heartbeat.
+- Staff screen performs an immediate control refresh on load.
+- Kitchen connection errors are displayed separately instead of being cleared by a successful order refresh.
+- Staff screen shows connected/not connected and last check-in time.
 
-This adds a linked "Website by Hometown Web Services" credit to the existing footer links.
-No Square, menu, checkout, webhook, image, analytics, or environment files are changed.
+No menu, pricing, catalog, payment capture, Square checkout, images, or public design files changed.

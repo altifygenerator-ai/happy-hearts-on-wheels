@@ -99,6 +99,7 @@ export function StaffOrders() {
   const [orders, setOrders] = useState<PendingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [connectionError, setConnectionError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [control, setControl] = useState<OrderingControl | null>(null);
@@ -147,8 +148,9 @@ export function StaffOrders() {
       if (!response.ok || !result.ok) throw new Error(result.error || "Ordering status could not be loaded.");
       if (result.control) setControl(result.control);
       if (result.status) setOrderingStatus(result.status);
+      setConnectionError("");
     } catch (controlError) {
-      setError(controlError instanceof Error ? controlError.message : "Ordering status could not be loaded.");
+      setConnectionError(controlError instanceof Error ? controlError.message : "Ordering status could not be loaded.");
     }
   }
 
@@ -157,14 +159,16 @@ export function StaffOrders() {
       const response = await fetch("/api/staff/heartbeat", { method: "POST", cache: "no-store" });
       const result = (await response.json()) as { ok: boolean; error?: string };
       if (!response.ok || !result.ok) throw new Error(result.error || "Kitchen connection could not be updated.");
+      setConnectionError("");
       await refreshControl();
     } catch (heartbeatError) {
-      setError(heartbeatError instanceof Error ? heartbeatError.message : "Kitchen connection could not be updated.");
+      setConnectionError(heartbeatError instanceof Error ? heartbeatError.message : "Kitchen connection could not be updated.");
     }
   }
 
   useEffect(() => {
     void heartbeat();
+    void refreshControl();
     void refreshOrders();
 
     const ordersTimer = window.setInterval(refreshOrders, 8_000);
@@ -230,6 +234,7 @@ export function StaffOrders() {
       if (!response.ok || !result.ok) throw new Error(result.error || "Online ordering could not be updated.");
       if (result.control) setControl(result.control);
       if (result.status) setOrderingStatus(result.status);
+      setConnectionError("");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Online ordering could not be updated.");
     } finally {
@@ -318,6 +323,7 @@ export function StaffOrders() {
           <strong>Safety:</strong> approval-mode ordering only stays open while this staff screen is actively connected. If this screen closes, loses internet, or stops checking in, the website automatically stops accepting new orders within a few minutes.
           {control?.manualPause.until ? <span> Timed pause ends {localDateTime(control.manualPause.until)}.</span> : null}
           {orderingStatus?.hoursSource === "site-fallback" ? <span> Regular hours fallback: Fri–Tue, 11 AM–7 PM.</span> : <span> Regular hours are being read from Square.</span>}
+          <span> Kitchen screen: {control?.heartbeatFresh ? "connected" : "not connected"}{control?.heartbeatAt ? ` · last check-in ${localTime(control.heartbeatAt)}` : ""}.</span>
         </div>
       </section>
 
@@ -334,6 +340,7 @@ export function StaffOrders() {
         </div>
       </div>
 
+      {connectionError ? <p className="staff-error" role="alert"><strong>Kitchen connection:</strong> {connectionError}</p> : null}
       {error ? <p className="staff-error" role="alert">{error}</p> : null}
       {loading ? <p className="staff-empty">Checking Square for pending orders…</p> : null}
       {!loading && !orders.length ? <p className="staff-empty">No website orders are waiting for approval.</p> : null}
