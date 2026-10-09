@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   },
 
   description:
-    "Custom salads, stir fry, smoothies and lighter comfort food at 801 Hwy 270 in Malvern, Arkansas. Open Friday through Tuesday, 11 AM to 7 PM.",
+    "Custom salads, stir fry, smoothies and lighter comfort food at 801 Hwy 270 in Malvern, Arkansas. View the menu and order food for pickup.",
 
   verification: {
     google: "yy0m-F6oZewmjRHpFIpweeACSdTHxRLsg7k-PDU0XJQ",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   },
 
   alternates: {
-    canonical: siteUrl,
+    canonical: "/",
   },
 
   openGraph: {
