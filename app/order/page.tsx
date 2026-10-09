@@ -3,7 +3,9 @@ import { OrderExperience } from "./OrderExperience";
 import { getMenuCatalog } from "@/lib/square-catalog";
 
 export const metadata: Metadata = {
-  title: "Order Online",
+  title: "Order Online | Pickup in Malvern, AR",
+  alternates: { canonical: "/order" },
+  openGraph: { url: "/order", title: "Order Happy Hearts on Wheels Online" },
   description:
     "Order custom salads, stir fry, build-your-own smoothies, wraps, tacos, sides and drinks directly from Happy Hearts on Wheels in Malvern, Arkansas.",
 };
