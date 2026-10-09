@@ -4,7 +4,9 @@ import { itemPriceLabel, type MenuCatalog, type MenuCategory } from "@/lib/menu"
 import { getMenuCatalog } from "@/lib/square-catalog";
 
 export const metadata: Metadata = {
-  title: "Menu",
+  title: "Menu | Salads, Stir Fry & Smoothies in Malvern, AR",
+  alternates: { canonical: "/menu" },
+  openGraph: { url: "/menu", title: "Happy Hearts on Wheels Menu | Malvern, AR" },
   description:
     "See the Happy Hearts on Wheels menu, including custom salads, custom stir fry, build-your-own smoothies, wraps, tacos, sides and drinks in Malvern, Arkansas.",
 };
