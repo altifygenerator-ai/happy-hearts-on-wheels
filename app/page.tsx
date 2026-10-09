@@ -4,7 +4,7 @@ import { MenuPreview } from "@/components/MenuPreview";
 import { itemPriceLabel } from "@/lib/menu";
 import { getMenuCatalog } from "@/lib/square-catalog";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.happyheartsonwheels.net";
 
 const businessSchema = {
   "@context": "https://schema.org",
